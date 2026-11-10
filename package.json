@@ -1,0 +1,12 @@
+{
+  "name": "daeshift",
+  "version": "0.1.0",
+  "description": "daemorgue's agent-assisted development environment, as a pi package",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "pi": {
+    "extensions": ["./pi/extensions"],
+    "skills": ["./pi/skills"],
+    "prompts": ["./pi/prompts"]
+  }
+}

@@ -47,8 +47,11 @@ is not installed yet, say so and follow this skill alone.
   5. **Verification**: a table pairing each contract item with the test
      or CI check that proves it, or "Not checked" when nothing does.
   6. **Containers** on a system page, **Components** on a container
-     page: the C4 elements one level down, each with its status and a
-     link to its page.
+     page: the C4 elements one level down. Open with a Mermaid
+     flowchart coloring each by status (classes `built` green,
+     `partial` amber, `planned` red), then a sentence summarizing the
+     counts, then a table with each element's status and a link to its
+     page.
 
   No "Decisions" section: reasons belong in the explanation page.
 

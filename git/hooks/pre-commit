@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+
+# daeshift's git hook dispatcher. git runs it for every repo under
+# $DAESHIFT_HOME/local/projects/ (see git/gitconfig). Every other file in
+# git/hooks/ is a link to this one, and the script reads its own name to
+# know which hook it is. For pre-commit and commit-msg it finds the
+# repo's project, hands the commit to pre-commit with the repo's config
+# from the project repo (.config/pre-commit/<repo>.yaml, or
+# _project.yaml for the project repo itself), and tells the hooks where
+# they run: DAESHIFT_PROJECT_ROOT (the project folder) and
+# DAESHIFT_REPO_KIND ("project" or "code"). For every hook it then runs
+# the repo's own hook of the same name, if any, since setting
+# core.hooksPath stops git from running them. Run "pre-commit --help"
+# for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly CONFIG_DIR=".config/pre-commit"
+
+# Every outside program the dispatcher runs. check_dependencies reports
+# each missing one before any work starts.
+dependencies=(git)
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints the pre-commit program to run: daeshift's own copy under
+# DAESHIFT_HOME, or one on PATH. Fails when there is neither.
+find_pre_commit() {
+  local daeshift_home="${HOME}/.daeshift"
+  local own_copy
+
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+  own_copy="${daeshift_home}/local/tools/pre-commit/bin/pre-commit"
+  if [[ -x "${own_copy}" ]]; then
+    echo "${own_copy}"
+  elif command -v pre-commit >/dev/null 2>&1; then
+    command -v pre-commit
+  else
+    err "pre-commit was not found. Install it into" \
+      "${daeshift_home}/local/tools/pre-commit (python3 -m venv, then" \
+      "pip install pre-commit), or onto PATH."
+    return 1
+  fi
+}
+
+# Prints the project folder repo $1 belongs to: the first folder under
+# projects folder $2. Prints nothing when the repo is not under it.
+find_project_root() {
+  local project_name
+  local relative
+
+  if [[ "$1" != "$2/"* ]]; then
+    return 0
+  fi
+  relative="${1#"$2/"}"
+  project_name="${relative%%/*}"
+  echo "$2/${project_name}"
+}
+
+main() {
+  local common_dir
+  local config
+  local daeshift_home="${HOME}/.daeshift"
+  local hook_name="${0##*/}"
+  local project_root
+  local projects_dir
+  local repo_name
+  local repo_top
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      # Hooks print only what pre-commit prints, so -q has nothing to hide.
+      "-q"|"--quiet") shift ;;
+      *) break ;;
+    esac
+  done
+
+  check_dependencies || exit 1
+  if [[ "${hook_name}" != "pre-commit" && "${hook_name}" != "commit-msg" ]]
+  then
+    run_own_hook "${hook_name}" "$@" || exit 1
+    exit 0
+  fi
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+  # The main checkout, so a linked worktree uses its repo's config.
+  common_dir="$(git rev-parse --path-format=absolute --git-common-dir)" \
+    || exit 1
+  repo_top="${common_dir%/.git}"
+  # Both sides as physical paths, since git reports one.
+  projects_dir="$(cd "${daeshift_home}/local/projects" 2>/dev/null \
+    && pwd -P)" || projects_dir=""
+  if [[ -n "${projects_dir}" ]]; then
+    project_root="$(find_project_root "${repo_top}" "${projects_dir}")" \
+      || exit 1
+  else
+    project_root=""
+  fi
+  if [[ -n "${project_root}" ]]; then
+    if [[ "${repo_top}" == "${project_root}" ]]; then
+      repo_name="_project"
+      export DAESHIFT_REPO_KIND="project"
+    else
+      repo_name="${repo_top##*/}"
+      export DAESHIFT_REPO_KIND="code"
+    fi
+    export DAESHIFT_PROJECT_ROOT="${project_root}"
+    config="${project_root}/${CONFIG_DIR}/${repo_name}.yaml"
+    if [[ -f "${config}" ]]; then
+      run_pre_commit "${config}" "${hook_name}" "$@" || exit 1
+    fi
+  fi
+  run_own_hook "${hook_name}" "$@" || exit 1
+}
+
+# Runs the repo's own hook named $1 from its .git/hooks folder, passing
+# the rest of the arguments. Does nothing when there is none; fails when
+# it fails.
+run_own_hook() {
+  local git_dir
+  local own_hook
+
+  # The common folder, so a linked worktree finds the repo's hooks too.
+  git_dir="$(git rev-parse --git-common-dir)" || return 1
+  own_hook="${git_dir}/hooks/$1"
+  shift
+  if [[ -x "${own_hook}" ]]; then
+    "${own_hook}" "$@" || return 1
+  fi
+}
+
+# Runs pre-commit with config file $1 for hook $2. For commit-msg, $3 is
+# the commit message file. Fails when any hook fails.
+run_pre_commit() {
+  local config="$1"
+  local hook_name="$2"
+  local pre_commit
+
+  pre_commit="$(find_pre_commit)" || return 1
+  if [[ "${hook_name}" == "commit-msg" ]]; then
+    "${pre_commit}" run --config "${config}" --hook-stage commit-msg \
+      --commit-msg-filename "$3"
+  else
+    "${pre_commit}" run --config "${config}" --hook-stage pre-commit
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: <git hook name> [GIT'S HOOK ARGUMENTS]
+
+DESCRIPTION
+    Run by git, not by hand. For pre-commit and commit-msg, hands the
+    commit to pre-commit with the repo's config from its project repo.
+    For every hook, then runs the repo's own hook of the same name.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

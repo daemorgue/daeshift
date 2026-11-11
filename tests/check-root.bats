@@ -35,12 +35,12 @@ setup() {
 }
 
 @test "check-root names every forbidden file it finds, not just the first" {
-  mkdir -p "${HOME}/root/backlog" "${HOME}/root/.config"
-  touch "${HOME}/root/.config/conventions.yaml"
+  mkdir -p "${HOME}/root/backlog"
+  touch "${HOME}/root/CLAUDE.md"
   run "${check_root}" "${HOME}/root"
   assert_equal "${status}" 1
   assert_contains "${output}" "backlog must not be"
-  assert_contains "${output}" ".config/conventions.yaml must not be"
+  assert_contains "${output}" "CLAUDE.md must not be"
 }
 
 @test "check-root passes a root with no forbidden files" {

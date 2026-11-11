@@ -1,0 +1,11 @@
+# daeshift's git settings, applied to every repo under
+# ~/.daeshift/local/projects/ by one line in ~/.gitconfig:
+#
+#   [includeIf "gitdir:~/.daeshift/local/projects/"]
+#     path = ~/.daeshift/git/gitconfig
+#
+# It only points git at daeshift's hooks. Which hooks a repo runs is set
+# in its project repo, in .config/pre-commit/<repo>.yaml (decision-14).
+
+[core]
+  hooksPath = ~/.daeshift/git/hooks

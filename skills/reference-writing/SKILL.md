@@ -16,6 +16,15 @@ is not installed yet, say so and follow this skill alone.
   how it is used. No teaching and no steps toward a goal. A short clause
   giving a reason is fine; longer reasoning, history or opinion goes in
   the part's `explanation.md`, and tasks go in a how-to guide.
+- **Detailed enough to rebuild it.** An agent given only this page must
+  be able to build a part that behaves identically at the user's end,
+  in any language. Specify everything that crosses a boundary: inputs
+  and outputs, options and their defaults, exit statuses, files and
+  their formats, environment variables, APIs described language-neutrally
+  (names, parameters, results, errors), and how processes call each
+  other (arguments, call order, results). Leave out internal code. The
+  call syntax for one language (a Python import, say) goes in a how-to
+  guide. The contract binds (decision-17; see the first gotcha).
 - **Shape it like the thing.** A wiki page follows the C4 map in
   `maps/<repo>/` (the project repo's groma map, read with `groma view`): the
   system's page lists its containers, a container's page lists its
@@ -48,8 +57,9 @@ is not installed yet, say so and follow this skill alone.
 ## Gotchas
 
 - The contract lists what the part is required to do, not what it
-  happens to do today. If the code differs, leave the contract as it
-  is and report the mismatch to the developer or as a task.
+  happens to do today. If the code differs, never edit the contract to
+  match the code: report the mismatch to the developer or as a task,
+  which decides which one is wrong.
 - A page that needs "first," "then" or "because" in most sentences has
   drifted into a how-to guide or explanation; move that part out.
 - Keep it scannable. If a section outgrows a screen, move it to its own

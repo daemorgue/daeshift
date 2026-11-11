@@ -9,7 +9,8 @@ It builds on four tools:
 - [pi] runs the agent sessions, with whichever model suits the work.
 - [Backlog.md] tracks the work as Markdown tasks.
 - [groma.md] keeps a C4 map of each code repo's architecture.
-- [pre-commit] runs each repo's git hooks, set per project.
+- [pre-commit] runs each repo's commit checks, from a per-repo config
+  kept in its project repo.
 
 **Note:** daeshift is in early development. Its folders are laid out,
 but mostly empty so far.

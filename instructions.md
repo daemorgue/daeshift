@@ -35,6 +35,13 @@ start of a session.
 Every message stands on its own; never point back to an earlier message
 with a bare label.
 
+Present one task per message. When several tasks need the developer (an
+approval, a plan, a task to close, a question), take them one at a
+time: the current task first, then by priority with board order
+breaking ties. Present the next only after the developer has answered.
+A start-of-session, status or closeout report may list several tasks,
+but asks about one.
+
 - **First line, bold:** `TASK-<id> · <title>` of the task being worked.
   With no task yet (the start of a session, or board work), write
   `Between tasks · next: TASK-<id> · <title>` instead. Never invent a

@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+
+# install-tools: install daeshift's pinned command-line tools (bats,
+# ShellCheck, yq) into DIR/bin. Every download is checked against the
+# SHA-256 recorded below, and bats is cloned at a fixed commit. Used by
+# CI and by the installer. Run "install-tools --help" for usage.
+#
+# Pinned downloads exist for Linux x86_64 and macOS arm64 only.
+#
+# Updating a pin: change its version, then its commit or SHA-256 values.
+# yq publishes SHA-256 values in its release's "checksums" file;
+# ShellCheck publishes none, so its values come from downloading the
+# release and running "shasum -a 256" on it (trusted on first use).
+
+set -o nounset
+set -o pipefail
+
+readonly BATS_COMMIT="eb7f42f8d608ac693d7a4b67474f6714ea68cfc5" # v1.14.0
+readonly BATS_REPO="https://github.com/bats-core/bats-core.git"
+readonly SHELLCHECK_SHA256_DARWIN="339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
+readonly SHELLCHECK_SHA256_LINUX="b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+readonly SHELLCHECK_VERSION="v0.11.0"
+readonly YQ_SHA256_DARWIN="a2aebb93b5bdcb61bb76f630e42a0ef6a3ee10842a6516cd7b9e4080786ec593"
+readonly YQ_SHA256_LINUX="129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973"
+readonly YQ_VERSION="v4.54.3"
+
+# Every outside program install-tools runs. check_dependencies reports
+# each missing one before any work starts.
+dependencies=(chmod cp curl git ln mkdir mv rm shasum tar uname)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Downloads URL $2 to file $3 and checks it against SHA-256 $4. $1 names
+# the tool in messages. On any failure, including a mismatch, removes
+# the file and fails. Callers download to a temporary name and move the
+# file into place only after this succeeds.
+download_checked() {
+  local actual
+  local expected="$4"
+  local file="$3"
+  local tool="$1"
+  local url="$2"
+
+  if ! curl --fail --location --silent --show-error --output "${file}" \
+    "${url}"; then
+    rm -f "${file}"
+    return 1
+  fi
+  if ! actual="$(shasum -a 256 "${file}")"; then
+    rm -f "${file}"
+    return 1
+  fi
+  actual="${actual%% *}"
+  if [[ "${actual}" != "${expected}" ]]; then
+    rm -f "${file}"
+    err "${tool}: the download's SHA-256 is ${actual}, not the pinned" \
+      "${expected}. ${tool} was not installed. Check the release, then" \
+      "update the pin in ci/install-tools."
+    return 1
+  fi
+}
+
+# Clones bats-core at BATS_COMMIT into $1/bats-core and links its bats
+# into $1/bin.
+install_bats() {
+  local dir="$1"
+
+  # Clone beside any working copy, and replace it only on success.
+  rm -rf "${dir}/bats-core.new"
+  git clone --quiet "${BATS_REPO}" "${dir}/bats-core.new" || return 1
+  git -C "${dir}/bats-core.new" -c advice.detachedHead=false checkout \
+    --quiet "${BATS_COMMIT}" || return 1
+  rm -rf "${dir}/bats-core"
+  mv "${dir}/bats-core.new" "${dir}/bats-core" || return 1
+  ln -sf "${dir}/bats-core/bin/bats" "${dir}/bin/bats" || return 1
+  good "bats ${BATS_COMMIT} installed"
+}
+
+# Installs ShellCheck for platform $2 ("linux" or "darwin") into $1/bin.
+install_shellcheck() {
+  local archive
+  local dir="$1"
+  local expected="${SHELLCHECK_SHA256_LINUX}"
+  local name="linux.x86_64"
+  local url
+
+  if [[ "$2" == "darwin" ]]; then
+    expected="${SHELLCHECK_SHA256_DARWIN}"
+    name="darwin.aarch64"
+  fi
+  archive="${dir}/shellcheck.tar.gz"
+  url="https://github.com/koalaman/shellcheck/releases/download"
+  url="${url}/${SHELLCHECK_VERSION}"
+  url="${url}/shellcheck-${SHELLCHECK_VERSION}.${name}.tar.gz"
+  download_checked "ShellCheck" "${url}" "${archive}" "${expected}" \
+    || return 1
+  if ! tar -xzf "${archive}" -C "${dir}" \
+    || ! cp "${dir}/shellcheck-${SHELLCHECK_VERSION}/shellcheck" \
+      "${dir}/bin/"; then
+    rm -rf "${archive}" "${dir}/shellcheck-${SHELLCHECK_VERSION}"
+    return 1
+  fi
+  rm -rf "${archive}" "${dir}/shellcheck-${SHELLCHECK_VERSION}"
+  good "ShellCheck ${SHELLCHECK_VERSION} installed"
+}
+
+# Installs yq for platform $2 ("linux" or "darwin") into $1/bin.
+install_yq() {
+  local dir="$1"
+  local expected="${YQ_SHA256_LINUX}"
+  local name="linux_amd64"
+  local url
+
+  if [[ "$2" == "darwin" ]]; then
+    expected="${YQ_SHA256_DARWIN}"
+    name="darwin_arm64"
+  fi
+  url="https://github.com/mikefarah/yq/releases/download"
+  url="${url}/${YQ_VERSION}/yq_${name}"
+  download_checked "yq" "${url}" "${dir}/yq.download" "${expected}" \
+    || return 1
+  chmod +x "${dir}/yq.download" || return 1
+  mv "${dir}/yq.download" "${dir}/bin/yq" || return 1
+  good "yq ${YQ_VERSION} installed"
+}
+
+main() {
+  local dir
+  local platform
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+  dir="$1"
+
+  check_dependencies || exit 1
+  platform="$(pick_platform)" || exit 1
+  mkdir -p "${dir}/bin" || exit 1
+  # Absolute, so the bats link still works from any folder.
+  dir="$(cd "${dir}" && pwd)" || exit 1
+  install_bats "${dir}" || exit 1
+  install_shellcheck "${dir}" "${platform}" || exit 1
+  install_yq "${dir}" "${platform}" || exit 1
+}
+
+# Prints "linux" on 64-bit Intel Linux or "darwin" on Apple silicon
+# macOS, the two platforms with pinned downloads. Fails on any other.
+pick_platform() {
+  local machine
+  local system
+
+  system="$(uname -s)" || return 1
+  machine="$(uname -m)" || return 1
+  if [[ "${system}" == "Linux" && "${machine}" == "x86_64" ]]; then
+    echo "linux"
+  elif [[ "${system}" == "Darwin" && "${machine}" == "arm64" ]]; then
+    echo "darwin"
+  else
+    err "No pinned tools for ${system} ${machine}. Supported: Linux" \
+      "x86_64 and macOS arm64."
+    return 1
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: install-tools [OPTIONS] DIR
+
+DESCRIPTION
+    Install pinned bats, ShellCheck and yq into DIR/bin, checking each
+    download's SHA-256.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

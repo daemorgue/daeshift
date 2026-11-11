@@ -74,8 +74,8 @@ three or more tests repeat the same setup.
 
 - ShellCheck passes every `.bats` file.
 - CI runs the tests on Linux and macOS, so a GNU-only or newer-bash
-  habit fails before it merges. Install bats with `apt-get install
-  bats` on Linux and `brew install bats-core` on macOS.
+  habit fails before it merges. CI gets bats from daeshift's
+  `ci/install-tools`, pinned to a commit; never from apt or brew.
 
 ## Gotchas
 

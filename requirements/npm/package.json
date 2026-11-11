@@ -1,0 +1,9 @@
+{
+  "name": "daeshift-tools",
+  "private": true,
+  "description": "daeshift's npm tools, pinned. Install with: npm ci --prefix <dir>",
+  "dependencies": {
+    "backlog.md": "1.55.3",
+    "groma.md": "0.7.8"
+  }
+}

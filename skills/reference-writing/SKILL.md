@@ -1,0 +1,56 @@
+---
+name: reference-writing
+description: How to write a reference page (Diátaxis) that describes a part of a system exactly, so a reader can look up what it is, what it guarantees and how to use it. Use when writing or reviewing a wiki README.md or any other reference page, alongside style-technical-writing.
+---
+
+# Writing reference
+
+A reader consults reference while working; nobody reads it through.
+It must be complete, exact and easy to scan. Read
+`references/sources.md` only when asked why. If style-technical-writing
+is not installed yet, say so and follow this skill alone.
+
+## Rules
+
+- **Stick to description.** State what the part is, how it behaves and
+  how it is used. No teaching and no steps toward a goal. A short clause
+  giving a reason is fine; longer reasoning, history or opinion goes in
+  the part's `explanation.md`, and tasks go in a how-to guide.
+- **Shape it like the thing.** A wiki page follows the C4 map in
+  `maps/<repo>/` (the project repo's groma map, read with `groma view`): the
+  system's page lists its containers, a container's page lists its
+  components, each with a link down. Use each element's title from the
+  map, and its ID as the folder name.
+- **Same sections, same order, every time,** so a reader knows where to
+  look:
+
+  1. One sentence: what it is.
+  2. A diagram, followed by one or two sentences saying what it shows.
+  3. **Contract**: what the part guarantees, as a short list of
+     behaviours.
+  4. **Interface**: commands, flags, inputs, outputs, files, settings,
+     environment variables, exit codes: a table where there are more
+     than three.
+  5. **Checked by**: the tests or CI checks that prove the contract.
+  6. **Decisions**: links to the decisions that shaped it.
+  7. **Parts**: links to the pages one level down (system and container
+     pages only).
+
+  Leave out a section with nothing to say.
+- **State facts plainly:** "`--project NAME` starts the runner in
+  NAME's folder." Use "must" and "never" only for rules the reader has
+  to follow.
+- **Give a short example** of usage where it shows a fact faster than
+  a sentence; no walkthroughs.
+- **Planned parts** get one line: what they will do and the task that
+  builds them.
+
+## Gotchas
+
+- The contract lists what the part is required to do, not what it
+  happens to do today. If the code differs, leave the contract as it
+  is and report the mismatch to the developer or as a task.
+- A page that needs "first," "then" or "because" in most sentences has
+  drifted into a how-to guide or explanation; move that part out.
+- Keep it scannable. If a section outgrows a screen, move it to its own
+  reference page and link to it. Never drop entries to make it fit.

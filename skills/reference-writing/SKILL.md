@@ -25,6 +25,9 @@ is not installed yet, say so and follow this skill alone.
   other (arguments, call order, results). Leave out internal code. The
   call syntax for one language (a Python import, say) goes in a how-to
   guide. The contract binds (decision-17; see the first gotcha).
+- **Self-contained.** The wiki may be published without the rest of
+  its repository, so never link outside `wiki/`. Name a test or a file
+  as text when the reader needs it, never as a link.
 - **Shape it like the thing.** A wiki page follows the C4 map in
   `maps/<repo>/` (the project repo's groma map, read with `groma view`): the
   system's page lists its containers, a container's page lists its
@@ -40,10 +43,13 @@ is not installed yet, say so and follow this skill alone.
   4. **Interface**: commands, flags, inputs, outputs, files, settings,
      environment variables, exit codes: a table where there are more
      than three.
-  5. **Checked by**: the tests or CI checks that prove the contract.
-  6. **Decisions**: links to the decisions that shaped it.
-  7. **Parts**: links to the pages one level down (system and container
-     pages only).
+  5. **Verification**: a table pairing each contract item with the test
+     or CI check that proves it, or "Not checked" when nothing does.
+  6. **Containers** on a system page, **Components** on a container
+     page: the C4 elements one level down, each with its status and a
+     link to its page.
+
+  No "Decisions" section: reasons belong in the explanation page.
 
   Leave out a section with nothing to say.
 - **State facts plainly:** "`--project NAME` starts the runner in

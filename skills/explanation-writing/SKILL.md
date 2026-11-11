@@ -37,6 +37,8 @@ is not installed yet, say so and follow this skill alone.
 
 ## Page outline
 
+Start from `references/templates/explanation.md`.
+
 1. A short opening: what this page helps the reader understand.
 2. Background, including any outside technology.
 3. How it fits together, with a diagram.

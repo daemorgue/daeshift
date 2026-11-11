@@ -34,6 +34,9 @@ is not installed yet, say so and follow this skill alone.
   system's page lists its containers, a container's page lists its
   components, each with a link down. Use each element's title from the
   map, and its ID as the folder name.
+- **Start from the template** for the page's level:
+  `references/templates/system.md` or `references/templates/container.md`.
+  The developer approved these as the standard (2026-11-11).
 - **Same sections, same order, every time,** so a reader knows where to
   look:
 
@@ -47,11 +50,12 @@ is not installed yet, say so and follow this skill alone.
   5. **Verification**: a table pairing each contract item with the test
      or CI check that proves it, or "Not checked" when nothing does.
   6. **Containers** on a system page, **Components** on a container
-     page: the C4 elements one level down. Open with a Mermaid
-     flowchart coloring each by status (classes `built` green,
-     `partial` amber, `planned` red), then a sentence summarizing the
-     counts, then a table with each element's status and a link to its
-     page.
+     page: the C4 elements one level down. Open with a Mermaid C4
+     diagram (`C4Container` or `C4Component`) inside its boundary, with
+     the relationships between elements and each element colored by
+     status with `UpdateElementStyle` (green built, amber in part, red
+     planned). Then a sentence summarizing the counts, then a table with
+     each element's status and a link to its page.
 
   No "Decisions" section: reasons belong in the explanation page.
 

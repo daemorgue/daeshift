@@ -63,14 +63,10 @@ session in every project. So the root never holds `AGENTS.md`,
 
 ## How to install
 
-There is no install script yet, so these steps are manual. You need
-git, Node.js and [pi].
+There is no install script yet, so these steps are manual.
 
-1. Install Backlog.md and groma.md:
-
-```
-$ npm install -g backlog.md groma.md
-```
+1. Check the prerequisites: git 2.31 or later, bash, python3 3.11 or
+   later, node, tmux, curl and [pi].
 
 2. Clone daeshift to `~/.daeshift`. Everything that belongs to your
    machine goes in `~/.daeshift/local/`, which git ignores:
@@ -88,7 +84,12 @@ $ echo "runner=pi" > ~/.daeshift/local/config
 $ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
 ```
 
-4. Add `~/.daeshift/bin` to your `PATH`.
+4. Install daeshift's own tools, pinned, as described under
+   [Pinned tools](#pinned-tools).
+
+5. Add these to your `PATH`: `~/.daeshift/bin`,
+   `~/.daeshift/local/tools/bin` and
+   `~/.daeshift/local/tools/node/node_modules/.bin`.
 
 ## How to start a session
 
@@ -145,14 +146,78 @@ repos that receive pushes (`pre-receive`, `update`, `post-receive`,
 `post-update`, `proc-receive`, `push-to-checkout`) and Perforce's
 `p4-*` hooks.
 
-pre-commit is looked for at
+pre-commit must be daeshift's own pinned copy, at
 `$DAESHIFT_HOME/local/tools/pre-commit/bin/pre-commit` (by default under
-`~/.daeshift`), then on `PATH`.
+`~/.daeshift`); one on `PATH` is not used.
 
 A repo that sets its own `core.hooksPath`, as husky does, overrides
 daeshift's hooks entirely. If you set `DAESHIFT_HOME`, write the
 `includeIf` path as `$DAESHIFT_HOME/local/projects/` in full, and set
 the variable for every shell that runs git.
+
+## Pinned tools
+
+Every tool daeshift installs, in CI or on a machine, is pinned, by hash
+where possible (decision-9 on the daemorgue board). Tools a machine
+already shares with other software (git, bash, python3, node, tmux,
+curl, pi) are prerequisites: they are checked, not installed.
+
+| Tools | Pinned in | How |
+|-------|-----------|-----|
+| bats, ShellCheck, yq | `ci/install-tools` | bats at a git commit; the others as downloads checked against their SHA-256 |
+| pre-commit, tiredize | `requirements/*.txt` | every package, nested ones included, with hashes |
+| backlog.md, groma.md | `requirements/npm/package-lock.json` | npm's integrity hash for every package |
+| GitHub Actions | `.github/workflows/` | full commit SHA, version in a comment |
+
+Installing, from `~/.daeshift`:
+
+```
+$ cd ~/.daeshift
+$ ci/install-tools ~/.daeshift/local/tools
+$ python3 -m venv ~/.daeshift/local/tools/pre-commit
+$ ~/.daeshift/local/tools/pre-commit/bin/pip install \
+    --require-hashes --only-binary :all: -r requirements/pre-commit.txt
+$ mkdir -p ~/.daeshift/local/tools/node
+$ cp requirements/npm/package*.json ~/.daeshift/local/tools/node/
+$ npm ci --prefix ~/.daeshift/local/tools/node --ignore-scripts
+```
+
+`--only-binary :all:` means nothing is built from source, so no unpinned
+build tools are fetched, and `--ignore-scripts` means no package runs
+code while installing.
+
+Updating a pin:
+
+- **bats, ShellCheck, yq:** change the version and its commit or
+  SHA-256 at the top of `ci/install-tools`. yq lists SHA-256 values in
+  its release's `checksums` file. ShellCheck publishes none: download
+  the release and run `shasum -a 256` on it.
+- **Python tools:** change the version in `requirements/<tool>.in`,
+  then regenerate the `.txt` with pip-tools, in a throwaway
+  virtualenv:
+
+  ```
+  $ python3 -m venv /tmp/pip-tools
+  $ /tmp/pip-tools/bin/pip install pip-tools
+  $ /tmp/pip-tools/bin/pip-compile --generate-hashes --strip-extras \
+      --no-header --output-file requirements/<tool>.txt \
+      requirements/<tool>.in
+  ```
+
+- **npm tools:** change the version in `requirements/npm/package.json`,
+  then run `npm install --package-lock-only --ignore-scripts` in that
+  folder.
+
+- **GitHub Actions:** replace the commit SHA and the version in the
+  comment after it, in every workflow that uses the action.
+
+Commit the changed files together, so the PR shows every new version
+and hash. Dependabot will make these updates itself once it is set up
+(TASK-4.5 on the daemorgue board).
+
+The Python files are resolved for Python 3.11 and later; CI checks that
+they still install there. Pinned downloads in `ci/install-tools` exist
+for Linux x86_64 and macOS arm64 only.
 
 ## License
 

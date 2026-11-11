@@ -10,7 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck bin/daeshift ci/check-root git/hooks/pre-commit runners/pi/launch tests/*.bats
+      - name: Install pinned tools
+        run: |
+          ci/install-tools -q "${RUNNER_TEMP}/tools"
+          echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
+      - run: >-
+          shellcheck bin/daeshift ci/check-root ci/install-tools
+          git/hooks/pre-commit runners/pi/launch tests/*.bats
 
   test:
     strategy:
@@ -19,13 +25,46 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install bats on Linux
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes bats
-      - name: Install bats on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core
+      - name: Install pinned tools
+        run: |
+          ci/install-tools -q "${RUNNER_TEMP}/tools"
+          echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
       - name: Root holds no instruction files
         run: ci/check-root
       - name: Tests
         run: bats tests
+
+  pins:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13.5"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.4"
+      - name: pre-commit installs from its hashed requirements
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/pre-commit"
+          "${RUNNER_TEMP}/pre-commit/bin/pip" install --quiet \
+            --require-hashes --only-binary :all: -r requirements/pre-commit.txt
+          "${RUNNER_TEMP}/pre-commit/bin/pre-commit" --version
+      - name: The Python files still install on Python 3.11
+        run: |
+          for file in requirements/pre-commit.txt requirements/tiredize.txt; do
+            "${RUNNER_TEMP}/pre-commit/bin/pip" download --quiet \
+              --python-version 3.11 --only-binary :all: --require-hashes \
+              --dest "${RUNNER_TEMP}/py311" -r "${file}"
+          done
+      - name: backlog.md and groma.md install from the lockfile
+        run: |
+          mkdir -p "${RUNNER_TEMP}/npm"
+          cp requirements/npm/package.json requirements/npm/package-lock.json \
+            "${RUNNER_TEMP}/npm/"
+          npm ci --prefix "${RUNNER_TEMP}/npm" --ignore-scripts --silent
+          "${RUNNER_TEMP}/npm/node_modules/.bin/backlog" --version
+          "${RUNNER_TEMP}/npm/node_modules/.bin/groma" --version

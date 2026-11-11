@@ -44,8 +44,9 @@ check_dependencies() {
   fi
 }
 
-# Prints the pre-commit program to run: daeshift's own copy under
-# DAESHIFT_HOME, or one on PATH. Fails when there is neither.
+# Prints the pre-commit program to run: daeshift's own pinned copy under
+# DAESHIFT_HOME. Fails when it is missing; an unpinned pre-commit on
+# PATH is never used (decision-9).
 find_pre_commit() {
   local daeshift_home="${HOME}/.daeshift"
   local own_copy
@@ -56,12 +57,10 @@ find_pre_commit() {
   own_copy="${daeshift_home}/local/tools/pre-commit/bin/pre-commit"
   if [[ -x "${own_copy}" ]]; then
     echo "${own_copy}"
-  elif command -v pre-commit >/dev/null 2>&1; then
-    command -v pre-commit
   else
-    err "pre-commit was not found. Install it into" \
-      "${daeshift_home}/local/tools/pre-commit (python3 -m venv, then" \
-      "pip install pre-commit), or onto PATH."
+    err "pre-commit was not found. Install it, pinned, into" \
+      "${daeshift_home}/local/tools/pre-commit as daeshift's README" \
+      "describes under Pinned tools."
     return 1
   fi
 }

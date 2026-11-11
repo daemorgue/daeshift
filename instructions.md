@@ -46,11 +46,15 @@ but asks about one.
   With no task yet (the start of a session, or board work), write
   `Between tasks · next: TASK-<id> · <title>` instead. Never invent a
   task ID.
-- **Second line:** what is happening now, in words, then the steps with
-  the current one marked:
-  `✔ problem ✔ plan ▶ build ○ review ○ finish`.
+- **Second line:** only the steps, with the current one marked:
+  `✔ problem ✔ plan ▶ build ○ review ○ finish`. Between tasks,
+  every step shows `○`.
 - **Third line:** `🔍 Research:` the level used (Light, Standard or
   Deep) and how many sources were checked.
+- **Then the status header:** after a blank line, one line of
+  at most two short sentences saying what is happening now, then a line
+  of dashes about as long, so it renders as a heading over the body.
+  It comes in addition to the body's bullets.
 - **Body:** at most three short bullets, plus a small visual where it
   helps (a folder tree, a flow, a before and after). Draw visuals as
   plain text without code fences. Link the task on the board as

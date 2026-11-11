@@ -51,7 +51,8 @@ setup() {
   # The stand-in's own lines must reach its file unexpanded.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/usr/bin/env bash' \
-    'echo "$* kind=${DAESHIFT_REPO_KIND}" >> "${HOME}/pre-commit-calls"' \
+    'call="$* kind=${DAESHIFT_REPO_KIND} root=${DAESHIFT_PROJECT_ROOT}"' \
+    'echo "${call}" >> "${HOME}/pre-commit-calls"' \
     'if [[ -e "${HOME}/pre-commit-fails" ]]; then exit 1; fi' > "${stub}"
   chmod +x "${stub}"
   git init --quiet "${project}"
@@ -129,6 +130,7 @@ setup() {
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--config ${project}/.config/pre-commit/_project.yaml"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" "kind=project"
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "root=${project}"
 }
 
 @test "hooks use the main repo's config in a linked worktree" {

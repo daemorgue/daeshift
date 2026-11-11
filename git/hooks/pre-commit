@@ -10,8 +10,8 @@
 # they run: DAESHIFT_PROJECT_ROOT (the project folder) and
 # DAESHIFT_REPO_KIND ("project" or "code"). For every hook it then runs
 # the repo's own hook of the same name, if any, since setting
-# core.hooksPath stops git from running them. Run "pre-commit --help"
-# for usage.
+# core.hooksPath stops git from running them. Run
+# "git/hooks/pre-commit --help" for usage.
 
 set -o nounset
 set -o pipefail
@@ -104,8 +104,8 @@ main() {
   done
 
   check_dependencies || exit 1
-  if [[ "${hook_name}" != "pre-commit" && "${hook_name}" != "commit-msg" ]]
-  then
+  if [[ "${hook_name}" != "pre-commit" && "${hook_name}" != "commit-msg" \
+    && "${hook_name}" != "pre-merge-commit" ]]; then
     run_own_hook "${hook_name}" "$@" || exit 1
     exit 0
   fi
@@ -115,6 +115,11 @@ main() {
   # The main checkout, so a linked worktree uses its repo's config.
   common_dir="$(git rev-parse --path-format=absolute --git-common-dir)" \
     || exit 1
+  if [[ "${common_dir}" != /* ]]; then
+    err "git could not give an absolute path for this repo; daeshift's" \
+      "hooks need git 2.31 or later."
+    exit 1
+  fi
   repo_top="${common_dir%/.git}"
   # Both sides as physical paths, since git reports one.
   projects_dir="$(cd "${daeshift_home}/local/projects" 2>/dev/null \
@@ -158,8 +163,9 @@ run_own_hook() {
   fi
 }
 
-# Runs pre-commit with config file $1 for hook $2. For commit-msg, $3 is
-# the commit message file. Fails when any hook fails.
+# Runs pre-commit with config file $1 for hook $2 (pre-commit,
+# pre-merge-commit or commit-msg). For commit-msg, $3 is the commit
+# message file. Fails when any hook fails.
 run_pre_commit() {
   local config="$1"
   local hook_name="$2"
@@ -170,7 +176,8 @@ run_pre_commit() {
     "${pre_commit}" run --config "${config}" --hook-stage commit-msg \
       --commit-msg-filename "$3"
   else
-    "${pre_commit}" run --config "${config}" --hook-stage pre-commit
+    # pre-commit, or pre-merge-commit for a merge without conflicts.
+    "${pre_commit}" run --config "${config}" --hook-stage "${hook_name}"
   fi
 }
 

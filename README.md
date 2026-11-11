@@ -58,8 +58,8 @@ Projects are kept inside daeshift's folder, and agent tools read
 instruction files such as `AGENTS.md` from every folder above the one
 they start in. A file like that at daeshift's root would reach every
 session in every project. So the root never holds `AGENTS.md`,
-`CLAUDE.md`, a Backlog.md board or its config, or
-`.config/conventions.yaml`. CI runs `ci/check-root` to enforce this.
+`CLAUDE.md`, or a Backlog.md board or its config. CI runs
+`ci/check-root` to enforce this.
 
 ## How to install
 
@@ -127,7 +127,9 @@ from the file to turn it off. The same file serves both the pre-commit
 and commit-msg stages, so give each hook its `stages:` (or set
 `default_stages: [pre-commit]` at the top), or a file check would also
 run on the commit message. A repo with no file runs no daeshift hooks.
-A linked worktree uses its main repo's file.
+A linked worktree uses its main repo's file. A merge without conflicts
+runs the pre-merge-commit stage instead of pre-commit. daeshift's hooks
+need git 2.31 or later.
 
 Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder) and
 `DAESHIFT_REPO_KIND` (`project` for the project repo, `code` for a code

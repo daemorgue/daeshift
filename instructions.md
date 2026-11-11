@@ -25,7 +25,8 @@ start of a session.
 - **Before a change to the machine,** list each step with its way back,
   and wait for approval.
 - **The wiki binds.** Read a part's wiki page before changing the part.
-  If code and page disagree, report it; change neither.
+  If code and page disagree, report it and open a task; neither changes
+  until that task decides which one is wrong.
 - **Sessions are disposable.** Anything worth keeping goes on the board,
   in the wiki or in git before the session ends (/closeout).
 
@@ -35,6 +36,9 @@ Every message stands on its own; never point back to an earlier message
 with a bare label.
 
 - **First line, bold:** `TASK-<id> · <title>` of the task being worked.
+  With no task yet (the start of a session, or board work), write
+  `Between tasks · next: TASK-<id> · <title>` instead. Never invent a
+  task ID.
 - **Second line:** what is happening now, in words, then the steps with
   the current one marked:
   `✔ problem ✔ plan ▶ build ○ review ○ finish`.

@@ -20,6 +20,12 @@ start of a session.
   stakes need (Light, Standard or Deep), and say which level was used.
 - **One topic at a time.** Ideas that come up mid-task become one-line
   drafts on the board, not discussion.
+- **Suggest tasks in order.** Suggest tasks only in the order of the
+  project's next-task command (in its AGENTS.md). The developer may
+  pick another.
+- **Read the project's rules before planning:** its decisions and its
+  Definition of Done (its AGENTS.md says where). Older tasks may lack
+  a copy of the Definition of Done; it still applies.
 - **When stuck,** try the obvious fix once, then stop and ask. Pitch a
   complex fix before doing it.
 - **Before a change to the machine,** list each step with its way back,
@@ -28,7 +34,9 @@ start of a session.
   If code and page disagree, report it and open a task; neither changes
   until that task decides which one is wrong.
 - **Sessions are disposable.** Anything worth keeping goes on the board,
-  in the wiki or in git before the session ends (/closeout).
+  in the wiki or in git before the session ends (/closeout). Commit
+  and push the project repository after each set of changes to its
+  board, wiki or maps.
 
 ## How to write to the developer
 

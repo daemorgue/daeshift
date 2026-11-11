@@ -1,44 +1,128 @@
 #!/usr/bin/env bash
-#
-# Fails when daeshift's root holds a file or folder that agent tools, or
-# the tools daeshift runs, look for in every parent folder. Projects live
-# inside daeshift's install (~/.daeshift/local/projects/), so such a file
-# here would reach every session and every repo on the machine.
-#
-# Usage: ci/check-root [DIR]
-#   DIR defaults to the root of the daeshift repo this script is in.
 
-set -euo pipefail
+# check-root: fail when daeshift's root holds a file or folder that agent
+# tools, or the tools daeshift runs, look for in every parent folder.
+# Projects live inside daeshift's install (~/.daeshift/local/projects/),
+# so such a file here would reach every session and every repo. Run
+# "check-root --help" for usage.
+
+set -o nounset
+set -o pipefail
 
 # Agent instruction files (pi and Claude Code also accept the .MD
 # spellings), the Backlog.md board and its root config, and the project
 # conventions file the git hooks search for.
 readonly FORBIDDEN=(
-  "AGENTS.md"
-  "AGENTS.MD"
-  "AGENTS.override.md"
-  "CLAUDE.md"
-  "CLAUDE.MD"
-  "backlog"
   ".backlog"
-  "backlog.config.yml"
   ".config/conventions.yaml"
+  "AGENTS.MD"
+  "AGENTS.md"
+  "AGENTS.override.md"
+  "CLAUDE.MD"
+  "CLAUDE.md"
+  "backlog"
+  "backlog.config.yml"
 )
 
-main() {
-  local dir="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
-  local name
-  local found=0
+# Every outside program check-root runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(dirname)
+quiet="false"
 
-  for name in "${FORBIDDEN[@]}"; do
-    if [[ -e "${dir}/${name}" ]]; then
-      echo "check-root: ${name} must not be at daeshift's root (${dir})." \
-        "Projects live under it, so tools would read it in every project." >&2
-      found=1
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
     fi
   done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
 
-  return "${found}"
+# Reports each name in FORBIDDEN found in folder $1. Fails if any is
+# found.
+check_root() {
+  local found="false"
+  local name
+  local root="$1"
+
+  for name in "${FORBIDDEN[@]}"; do
+    if [[ -e "${root}/${name}" ]]; then
+      err "${name} must not be at daeshift's root (${root})." \
+        "Projects live under it, so tools would read it in every" \
+        "project."
+      found="true"
+    fi
+  done
+  if [[ "${found}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  local root
+  local script_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -gt 1 ]]; then
+    usage 1 >&2
+  fi
+
+  check_dependencies || exit 1
+  if [[ $# -eq 1 ]]; then
+    root="$1"
+  else
+    script_dir="$(dirname "$0")" || exit 1
+    root="$(cd "${script_dir}/.." && pwd)" || exit 1
+  fi
+  check_root "${root}" || exit 1
+  good "${root} holds no files that tools search parent folders for"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: check-root [OPTIONS] [DIR]
+
+DESCRIPTION
+    Fail when DIR (default: this repo's root) holds a file that agent
+    tools search for in every parent folder, such as AGENTS.md.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
 }
 
 main "$@"

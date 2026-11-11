@@ -14,8 +14,13 @@ is not installed yet, say so and follow this skill alone.
 
 - **About a topic.** The title should read naturally after "About":
   "About the git hook dispatcher", "About pinning by hash".
-- **Give context.** Say why things are so: the decisions behind them
-  (link each one), the history, the limits that shaped them.
+- **Give context.** Say why things are so: the history, the limits that
+  shaped them, and the decisions behind them. Summarize each decision
+  in your own words, then cite its record number in parentheses, as in
+  "(decision-14)". Never cite a bare number without the summary, and
+  never link to a file outside `wiki/`: the wiki may be published
+  without the rest of its repository. Links to public web pages are
+  fine.
 - **Weigh alternatives.** Name what else was considered and why it lost.
   A clear judgement is welcome: "pre-commit was chosen over a home-made
   runner because…".
@@ -32,12 +37,14 @@ is not installed yet, say so and follow this skill alone.
 
 ## Page outline
 
+Start from `references/templates/explanation.md`.
+
 1. A short opening: what this page helps the reader understand.
 2. Background, including any outside technology.
 3. How it fits together, with a diagram.
 4. Why it is this way: decisions and alternatives.
 5. Limits and open questions.
-6. Related: links to the reference page, how-to guides and decisions.
+6. Related: links to the reference page and how-to guides in the wiki.
 
 ## Gotchas
 

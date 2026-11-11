@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+#
+# Fails when daeshift's root holds a file or folder that agent tools, or
+# the tools daeshift runs, look for in every parent folder. Projects live
+# inside daeshift's install (~/.daeshift/local/projects/), so such a file
+# here would reach every session and every repo on the machine.
+#
+# Usage: ci/check-root [DIR]
+#   DIR defaults to the root of the daeshift repo this script is in.
+
+set -euo pipefail
+
+# Agent instruction files (pi and Claude Code also accept the .MD
+# spellings), the Backlog.md board and its root config, and the project
+# conventions file the git hooks search for.
+readonly FORBIDDEN=(
+  "AGENTS.md"
+  "AGENTS.MD"
+  "AGENTS.override.md"
+  "CLAUDE.md"
+  "CLAUDE.MD"
+  "backlog"
+  ".backlog"
+  "backlog.config.yml"
+  ".config/conventions.yaml"
+)
+
+main() {
+  local dir="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
+  local name
+  local found=0
+
+  for name in "${FORBIDDEN[@]}"; do
+    if [[ -e "${dir}/${name}" ]]; then
+      echo "check-root: ${name} must not be at daeshift's root (${dir})." \
+        "Projects live under it, so tools would read it in every project." >&2
+      found=1
+    fi
+  done
+
+  return "${found}"
+}
+
+main "$@"

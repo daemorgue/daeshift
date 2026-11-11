@@ -27,7 +27,7 @@ sequenceDiagram
 
 | Contract item | Checked by |
 |---|---|
-| 1. <Topic> | <Test or check, "Not checked", or "Not met today: …"> |
+| 1. <Topic> | <Test or check, "Partly: …" naming the gaps, "Not checked", or "Not met today: …"> |
 
 ## Components
 

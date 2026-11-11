@@ -16,8 +16,8 @@ is not installed yet, say so and follow this skill alone.
   how it is used. No teaching and no steps toward a goal. A short clause
   giving a reason is fine; longer reasoning, history or opinion goes in
   the part's `explanation.md`, and tasks go in a how-to guide.
-- **Detailed enough to rebuild it.** An agent given only this page must
-  be able to build a part that behaves identically at the user's end,
+- **Detailed enough to rebuild it.** An agent given only this page,
+  plus the pages above it that it links to, must be able to build a part that behaves identically at the user's end,
   in any language. Specify everything that crosses a boundary: inputs
   and outputs, options and their defaults, exit statuses, files and
   their formats, environment variables, APIs described language-neutrally
@@ -35,13 +35,18 @@ is not installed yet, say so and follow this skill alone.
   components, each with a link down. Use each element's title from the
   map, and its ID as the folder name.
 - **Start from the template** for the page's level:
-  `references/templates/project.md`, `system.md` or `container.md`
-  (`component.md` follows once its first page is approved).
-  The developer approved these as the standard (2026-11-11).
+  `references/templates/project.md`, `system.md`, `container.md` or
+  `component.md`. The developer approved these as the standard
+  (2026-11-11; `component.md` 2026-11-12).
+- **One rule, one page.** A container page states what holds at the
+  container's boundary and links down; a component page states its
+  own mechanics and links up for a container rule it relies on. Never
+  state one rule on both. A component has an `explanation.md` only when
+  it needs background its container's page does not give.
 - **Same sections, same order, every time,** so a reader knows where to
   look:
 
-  1. One sentence: what it is.
+  1. One sentence (two on a component page): what it is.
   2. A diagram, followed by one or two sentences saying what it shows.
   3. **Contract**: what the part guarantees, as a short list of
      behaviours.
@@ -49,7 +54,9 @@ is not installed yet, say so and follow this skill alone.
      environment variables, exit codes: a table where there are more
      than three.
   5. **Verification**: a table pairing each contract item with the test
-     or CI check that proves it, or "Not checked" when nothing does.
+     or CI check that proves it, "Partly: …" naming the gaps, "Not
+     checked" when nothing does, or "Not met today: …" when the code
+     differs.
   6. **Systems** on a project page, **Containers** on a system page,
      **Components** on a container
      page: the C4 elements one level down. Open with a Mermaid C4

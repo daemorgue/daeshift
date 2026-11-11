@@ -4,11 +4,12 @@ daeshift sets up daemorgue's day-to-day environment for agent-assisted
 development. Clone it onto a new machine, install it, and the tools,
 rules and workflow are ready to use.
 
-It builds on three tools:
+It builds on four tools:
 
 - [pi] runs the agent sessions, with whichever model suits the work.
 - [Backlog.md] tracks the work as Markdown tasks.
 - [groma.md] keeps a C4 map of each code repo's architecture.
+- [pre-commit] runs each repo's git hooks, set per project.
 
 **Note:** daeshift is in early development. Its folders are laid out,
 but mostly empty so far.

@@ -26,8 +26,9 @@ is not installed yet, say so and follow this skill alone.
   call syntax for one language (a Python import, say) goes in a how-to
   guide. The contract binds (decision-17; see the first gotcha).
 - **Self-contained.** The wiki may be published without the rest of
-  its repository, so never link outside `wiki/`. Name a test or a file
-  as text when the reader needs it, never as a link.
+  its repository, so never link to a file outside `wiki/`. Name a test
+  or a file as text when the reader needs it. Links to public web pages
+  are fine.
 - **Shape it like the thing.** A wiki page follows the C4 map in
   `maps/<repo>/` (the project repo's groma map, read with `groma view`): the
   system's page lists its containers, a container's page lists its

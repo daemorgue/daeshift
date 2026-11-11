@@ -18,8 +18,9 @@ is not installed yet, say so and follow this skill alone.
   shaped them, and the decisions behind them. Summarize each decision
   in your own words, then cite its record number in parentheses, as in
   "(decision-14)". Never cite a bare number without the summary, and
-  never link outside `wiki/`: the wiki may be published without the
-  rest of its repository.
+  never link to a file outside `wiki/`: the wiki may be published
+  without the rest of its repository. Links to public web pages are
+  fine.
 - **Weigh alternatives.** Name what else was considered and why it lost.
   A clear judgement is welcome: "pre-commit was chosen over a home-made
   runner because…".

@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+
+# launch: start pi in the current folder with daeshift's instructions,
+# skills, prompts and pi extensions, all passed by path. The daeshift
+# launcher runs it; run "launch --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# Every outside program launch runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(pi)
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it: https://pi.dev"
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  local code_dir
+  local extension
+  local pi_options
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+  code_dir="$1"
+
+  check_dependencies || exit 1
+  pi_options=(
+    --append-system-prompt "${code_dir}/instructions.md"
+    --prompt-template "${code_dir}/prompts"
+    --skill "${code_dir}/skills"
+  )
+  # pi loads an extension from a .ts file, or a folder with index.ts.
+  for extension in "${code_dir}"/runners/pi/extensions/*; do
+    if [[ "${extension}" == *.ts || -f "${extension}/index.ts" ]]; then
+      pi_options+=(-e "${extension}")
+    fi
+  done
+  exec pi "${pi_options[@]}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: launch [OPTIONS] DAESHIFT_DIR
+
+DESCRIPTION
+    Start pi in the current folder with the instructions, skills,
+    prompts and pi extensions from DAESHIFT_DIR.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

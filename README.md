@@ -20,7 +20,7 @@ project's board, wiki and architecture maps, and lists its code repos.
 The code repos are cloned inside it:
 
 ```
-~/.daeshift/projects/
+~/.daeshift/local/projects/
   <project>/                  the project repo
     backlog/                  the Backlog.md board
     wiki/                     how the project works
@@ -72,24 +72,36 @@ git, Node.js and [pi].
 $ npm install -g backlog.md groma.md
 ```
 
-2. Clone the project repo that lists daeshift, and daeshift inside it:
+2. Clone daeshift to `~/.daeshift`. Everything that belongs to your
+   machine goes in `~/.daeshift/local/`, which git ignores:
 
 ```
-$ mkdir -p ~/.daeshift/projects
-$ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/projects/daemorgue
-$ cd ~/.daeshift/projects/daemorgue
-$ git clone git@github.com:daemorgue/daeshift.git repositories/daeshift
+$ git clone git@github.com:daemorgue/daeshift.git ~/.daeshift
+$ mkdir -p ~/.daeshift/local/projects
+$ echo "runner=pi" > ~/.daeshift/local/config
 ```
 
-3. Start pi at the project root, handing it daeshift's parts by
-   path. A `daeshift` command will do this for you:
+3. Clone a project repo into `local/projects/`, and its code repos into
+   its `repositories/` folder:
 
 ```
-$ cd ~/.daeshift/projects/daemorgue
-$ pi --append-system-prompt repositories/daeshift/instructions.md \
-    --skill repositories/daeshift/skills \
-    --prompt-template repositories/daeshift/prompts
+$ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
 ```
+
+4. Add `~/.daeshift/bin` to your `PATH`.
+
+## How to start a session
+
+```
+$ daeshift --list-projects
+daemorgue
+$ daeshift --project daemorgue
+```
+
+`daeshift --project` starts the agent tool named by `runner=` in
+`~/.daeshift/local/config` (only `pi` so far), in the project's folder,
+with daeshift's instructions, skills and prompts. Set `DAESHIFT_HOME`
+to keep `local/` somewhere other than `~/.daeshift`.
 
 ## License
 

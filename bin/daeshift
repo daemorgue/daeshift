@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+
+# daeshift: start an agent session in a project, or list the projects.
+# Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
+# to ~/.daeshift), and $DAESHIFT_HOME/local/config names the agent tool
+# to start (runner=pi). Run "daeshift --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+
+# Every outside program daeshift runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(dirname)
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints the name of each folder in $1, one per line. Fails if $1 is not
+# a folder.
+list_folders() {
+  local folder
+
+  if [[ ! -d "$1" ]]; then
+    err "$1 does not exist. Create it, then try again."
+    return 1
+  fi
+  for folder in "$1"/*/; do
+    if [[ -d "${folder}" ]]; then
+      folder="${folder%/}"
+      echo "${folder##*/}"
+    fi
+  done
+}
+
+main() {
+  local daeshift_home="${HOME}/.daeshift"
+  local list="false"
+  local project=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "--list-projects") list="true" ;;
+      "--project")
+        if [[ $# -lt 2 ]]; then
+          usage 1 >&2
+        fi
+        project="$2"
+        shift
+        ;;
+      # daeshift prints only errors and lists, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      *) usage 1 >&2 ;;
+    esac
+    shift
+  done
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+
+  check_dependencies || exit 1
+  if [[ "${list}" == "true" ]]; then
+    list_folders "${daeshift_home}/local/projects" || exit 1
+  elif [[ -n "${project}" ]]; then
+    start_project "${daeshift_home}" "${project}" || exit 1
+  else
+    usage 1 >&2
+  fi
+}
+
+# Prints the runner named in config file $1 (a "runner=NAME" line). The
+# file is read as data, never run. Fails if the file or the line is
+# missing, or the name is not a plain name.
+read_runner() {
+  local config="$1"
+  local key
+  local runner=""
+  local value
+
+  if [[ ! -f "${config}" ]]; then
+    err "${config} does not exist. Create it with the line: runner=pi"
+    return 1
+  fi
+  while IFS='=' read -r key value || [[ -n "${key}" ]]; do
+    if [[ "${key}" == "runner" ]]; then
+      runner="${value}"
+    fi
+  done < "${config}"
+  if [[ -z "${runner}" ]]; then
+    err "${config} has no runner= line. Add one, such as: runner=pi"
+    return 1
+  fi
+  if [[ ! "${runner}" =~ ${NAME_PATTERN} ]]; then
+    err "${config}: runner '${runner}' is not a plain name."
+    return 1
+  fi
+  echo "${runner}"
+}
+
+# Starts the configured runner in project $2 under DAESHIFT_HOME $1, by
+# handing the process over to runners/<runner>/launch. Fails if the
+# project or the runner does not exist.
+start_project() {
+  local code_dir
+  local daeshift_home="$1"
+  local launch
+  local project="$2"
+  local project_dir="$1/local/projects/$2"
+  local runner
+  local script_dir
+
+  if [[ ! "${project}" =~ ${NAME_PATTERN} || ! -d "${project_dir}" ]]; then
+    err "No project '${project}' in ${daeshift_home}/local/projects." \
+      "Available projects:"
+    list_folders "${daeshift_home}/local/projects" >&2
+    return 1
+  fi
+  runner="$(read_runner "${daeshift_home}/local/config")" || return 1
+  script_dir="$(dirname "$0")" || return 1
+  code_dir="$(cd "${script_dir}/.." && pwd)" || return 1
+  launch="${code_dir}/runners/${runner}/launch"
+  if [[ ! -x "${launch}" ]]; then
+    err "No runner '${runner}' in ${code_dir}/runners. Available runners:"
+    list_folders "${code_dir}/runners" >&2
+    return 1
+  fi
+  cd "${project_dir}" || return 1
+  exec "${launch}" "${code_dir}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: daeshift [OPTIONS]
+
+DESCRIPTION
+    Start an agent session in a project, or list the projects.
+
+OPTIONS
+    -h, --help            Display this help message
+        --list-projects   List the projects
+        --project NAME    Start a session in the project NAME
+    -q, --quiet           Show only warnings and errors
+
+ENVIRONMENT
+    DAESHIFT_HOME   Where local/config and local/projects/ live
+                    (default: ~/.daeshift)
+EOF
+  exit "$1"
+}
+
+main "$@"

@@ -1,0 +1,26 @@
+# Frontmatter schema for skills/*/SKILL.md, checked with tiredize.
+#
+# Follows the Agent Skills specification (https://agentskills.io/specification):
+# name and description are required strings, and only the spec's fields
+# are allowed. The spec's "metadata" field is a mapping, which tiredize
+# cannot describe yet, so it is left out until a skill needs it.
+#
+# Usage:
+#   tiredize --frontmatter-schema ci/skill-frontmatter.yaml skills/*/SKILL.md
+
+allow_extra_fields: false
+
+fields:
+  allowed-tools:
+    type: string
+    required: false
+  compatibility:
+    type: string
+    required: false
+  description:
+    type: string
+  license:
+    type: string
+    required: false
+  name:
+    type: string

@@ -1,0 +1,161 @@
+#!/usr/bin/env bash
+
+# check-skills: check each skill against the Agent Skills specification
+# where tiredize cannot. tiredize checks the frontmatter's fields and
+# types; this checks name format, name-to-folder match, description
+# length and SKILL.md length. Run "check-skills --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly MAX_DESCRIPTION_LENGTH=1024
+readonly MAX_NAME_LENGTH=64
+readonly MAX_SKILL_LINES=500
+readonly NAME_PATTERN='^[a-z0-9]+(-[a-z0-9]+)*$'
+
+# Every outside program check-skills runs. check_dependencies reports
+# each missing one before any work starts.
+dependencies=(wc yq)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it, then try again." \
+        "yq must be mikefarah's: https://github.com/mikefarah/yq"
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Checks one skill folder, $1. Prints an [!] line for each problem.
+# Fails if there is any.
+check_skill() {
+  local description
+  local folder_name
+  local line_count
+  local name
+  local skill_dir="$1"
+  local skill_file="$1/SKILL.md"
+  local status=0
+
+  if [[ ! -f "${skill_file}" ]]; then
+    err "${skill_dir} has no SKILL.md."
+    return 1
+  fi
+  folder_name="${skill_dir##*/}"
+  name="$(yq --front-matter=extract '.name // ""' "${skill_file}")" \
+    || return 1
+  description="$(yq --front-matter=extract '.description // ""' \
+    "${skill_file}")" || return 1
+  line_count="$(wc -l < "${skill_file}")" || return 1
+
+  if [[ ! "${name}" =~ ${NAME_PATTERN} ]]; then
+    err "${skill_file}: name '${name}' must be lowercase letters," \
+      "digits and single hyphens."
+    status=1
+  fi
+  if [[ "${#name}" -gt "${MAX_NAME_LENGTH}" ]]; then
+    err "${skill_file}: name is ${#name} characters;" \
+      "the limit is ${MAX_NAME_LENGTH}."
+    status=1
+  fi
+  if [[ "${name}" != "${folder_name}" ]]; then
+    err "${skill_file}: name '${name}' must match its folder," \
+      "'${folder_name}'."
+    status=1
+  fi
+  if [[ "${#description}" -gt "${MAX_DESCRIPTION_LENGTH}" ]]; then
+    err "${skill_file}: description is ${#description} characters;" \
+      "the limit is ${MAX_DESCRIPTION_LENGTH}."
+    status=1
+  fi
+  if [[ "${line_count}" -ge "${MAX_SKILL_LINES}" ]]; then
+    err "${skill_file} is ${line_count} lines; keep it under" \
+      "${MAX_SKILL_LINES} and move detail to references/."
+    status=1
+  fi
+  return "${status}"
+}
+
+main() {
+  local checked=0
+  local failed="false"
+  local skill_dir
+  local skills_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -gt 1 ]]; then
+    usage 1 >&2
+  fi
+  if [[ $# -eq 1 ]]; then
+    skills_dir="$1"
+  else
+    skills_dir="$(cd "$(dirname "$0")/.." && pwd)/skills" || exit 1
+  fi
+
+  check_dependencies || exit 1
+  for skill_dir in "${skills_dir}"/*/; do
+    skill_dir="${skill_dir%/}"
+    if [[ ! -d "${skill_dir}" ]]; then
+      continue
+    fi
+    checked=$((checked + 1))
+    if ! check_skill "${skill_dir}"; then
+      failed="true"
+    fi
+  done
+  if [[ "${failed}" == "true" ]]; then
+    exit 1
+  fi
+  good "${checked} skills follow the specification"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF2'
+Usage: check-skills [OPTIONS] [SKILLS_DIR]
+
+DESCRIPTION
+    Check each skill in SKILLS_DIR (default: this repo's skills/)
+    against the Agent Skills specification: name format, name matching
+    its folder, description length and SKILL.md length.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF2
+  exit "$1"
+}
+
+main "$@"

@@ -58,8 +58,8 @@ Projects are kept inside daeshift's folder, and agent tools read
 instruction files such as `AGENTS.md` from every folder above the one
 they start in. A file like that at daeshift's root would reach every
 session in every project. So the root never holds `AGENTS.md`,
-`CLAUDE.md`, a Backlog.md board or its config, or
-`.config/conventions.yaml`. CI runs `ci/check-root` to enforce this.
+`CLAUDE.md`, or a Backlog.md board or its config. CI runs
+`ci/check-root` to enforce this.
 
 ## How to install
 
@@ -103,6 +103,57 @@ $ daeshift --project daemorgue
 with daeshift's instructions, skills and prompts. Set `DAESHIFT_HOME`
 to keep `local/` somewhere other than `~/.daeshift`.
 
+## Git hooks
+
+daeshift checks every commit in a repo under
+`~/.daeshift/local/projects/`. One entry in `~/.gitconfig` turns this
+on for that folder only:
+
+```
+[includeIf "gitdir:~/.daeshift/local/projects/"]
+  path = ~/.daeshift/git/gitconfig
+```
+
+At each commit, daeshift's hook finds the repo's project and hands the
+commit to [pre-commit], using the repo's config from the project repo:
+
+```
+<project>/.config/pre-commit/<repo>.yaml      a code repo
+<project>/.config/pre-commit/_project.yaml    the project repo itself
+```
+
+A hook runs when it is listed in that file, with its settings; remove it
+from the file to turn it off. The same file serves both the pre-commit
+and commit-msg stages, so give each hook its `stages:` (or set
+`default_stages: [pre-commit]` at the top), or a file check would also
+run on the commit message. A repo with no file runs no daeshift hooks.
+A linked worktree uses its main repo's file. A merge without conflicts
+runs the pre-merge-commit stage instead of pre-commit. daeshift's hooks
+need git 2.31 or later.
+
+Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder) and
+`DAESHIFT_REPO_KIND` (`project` for the project repo, `code` for a code
+repo).
+
+A repo's own hooks in `.git/hooks/` still run, for the hooks git calls
+on a working clone: applypatch-msg, commit-msg, post-applypatch,
+post-checkout, post-commit, post-merge, post-rewrite, pre-applypatch,
+pre-auto-gc, pre-commit, pre-merge-commit, pre-push, pre-rebase,
+prepare-commit-msg and sendemail-validate. Not covered: hooks git calls
+very often (`reference-transaction`, `post-index-change`), hooks for
+repos that receive pushes (`pre-receive`, `update`, `post-receive`,
+`post-update`, `proc-receive`, `push-to-checkout`) and Perforce's
+`p4-*` hooks.
+
+pre-commit is looked for at
+`$DAESHIFT_HOME/local/tools/pre-commit/bin/pre-commit` (by default under
+`~/.daeshift`), then on `PATH`.
+
+A repo that sets its own `core.hooksPath`, as husky does, overrides
+daeshift's hooks entirely. If you set `DAESHIFT_HOME`, write the
+`includeIf` path as `$DAESHIFT_HOME/local/projects/` in full, and set
+the variable for every shell that runs git.
+
 ## License
 
 GPL-3.0. See [LICENSE](./LICENSE).
@@ -111,3 +162,4 @@ GPL-3.0. See [LICENSE](./LICENSE).
 [Backlog.md]: https://github.com/MrLesk/Backlog.md
 [groma.md]: https://github.com/MrLesk/groma.md
 [pi]: https://pi.dev
+[pre-commit]: https://pre-commit.com/

@@ -10,11 +10,10 @@ set -o nounset
 set -o pipefail
 
 # Agent instruction files (pi and Claude Code also accept the .MD
-# spellings), the Backlog.md board and its root config, and the project
-# conventions file the git hooks search for.
+# spellings), and the Backlog.md board and its root config, all of which
+# tools search for in parent folders.
 readonly FORBIDDEN=(
   ".backlog"
-  ".config/conventions.yaml"
   "AGENTS.MD"
   "AGENTS.md"
   "AGENTS.override.md"

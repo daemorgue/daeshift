@@ -15,8 +15,7 @@ flowchart TB
 1. **<Topic>.** <Binding behavior of this component only, detailed
    enough to rebuild it identically at the user's end in any language:
    inputs, outputs, options, exit statuses, files and formats,
-   environment variables, interprocess calls. A rule the container page
-   already states is not repeated here.>
+   environment variables, interprocess calls.>
 
 ## Interface
 

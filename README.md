@@ -10,8 +10,8 @@ It builds on three tools:
 - [Backlog.md] tracks the work as Markdown tasks.
 - [groma.md] keeps a C4 map of each code repo's architecture.
 
-**Note:** daeshift is in early development. It holds only the empty
-pi package so far.
+**Note:** daeshift is in early development. Its folders are laid out,
+but mostly empty so far.
 
 ## How work is laid out
 
@@ -35,14 +35,31 @@ from the project repo, never from a file committed to a code repo.
 ## What is in this repo
 
 ```
-package.json      declares the pi package
-pi/
-  extensions/     code that adds commands and checks to pi
-  skills/         knowledge pi loads when a task needs it
-  prompts/        reusable prompts, run as /commands
-  agents/         roles, read by the subagent extension
+instructions.md   instructions every session receives
+skills/           knowledge an agent loads when a task needs it
+prompts/          reusable prompts, run as /commands
+runners/
+  pi/             the parts only pi understands
+    extensions/   code that adds commands and checks to pi
+    agents/       roles, read by the subagent extension
+ci/check-root     the check that keeps the root free of instruction files
+tests/            tests for daeshift's scripts
 LICENSE
 ```
+
+The top-level parts work with any agent tool: skills follow the open
+[Agent Skills] format, and instructions and prompts are plain
+Markdown. Anything only one tool understands lives in
+`runners/<tool>/`, so trying another tool means adding a folder there.
+
+### Nothing at the root that tools search for
+
+Projects are kept inside daeshift's folder, and agent tools read
+instruction files such as `AGENTS.md` from every folder above the one
+they start in. A file like that at daeshift's root would reach every
+session in every project. So the root never holds `AGENTS.md`,
+`CLAUDE.md`, a Backlog.md board or its config, or
+`.config/conventions.yaml`. CI runs `ci/check-root` to enforce this.
 
 ## How to install
 
@@ -64,24 +81,21 @@ $ cd ~/.daeshift/projects/daemorgue
 $ git clone git@github.com:daemorgue/daeshift.git repositories/daeshift
 ```
 
-3. Register daeshift with pi. pi loads it from this folder, so a
-   change here takes effect after `/reload`:
-
-```
-$ pi install ~/.daeshift/projects/daemorgue/repositories/daeshift
-```
-
-4. Start pi at the project root:
+3. Start pi at the project root, handing it daeshift's parts by
+   path. A `daeshift` command will do this for you:
 
 ```
 $ cd ~/.daeshift/projects/daemorgue
-$ pi
+$ pi --append-system-prompt repositories/daeshift/instructions.md \
+    --skill repositories/daeshift/skills \
+    --prompt-template repositories/daeshift/prompts
 ```
 
 ## License
 
 GPL-3.0. See [LICENSE](./LICENSE).
 
+[Agent Skills]: https://agentskills.io/specification
 [Backlog.md]: https://github.com/MrLesk/Backlog.md
 [groma.md]: https://github.com/MrLesk/groma.md
 [pi]: https://pi.dev

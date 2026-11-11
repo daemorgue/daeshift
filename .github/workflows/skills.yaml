@@ -1,0 +1,41 @@
+name: Skills
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  frontmatter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install tiredize
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install \
+            "git+https://github.com/tired-labs/tiredize@7c25996ba3e1ebf3687e362707327a0a559376c1"
+      - name: Frontmatter follows the specification
+        run: .venv/bin/tiredize --frontmatter-schema ci/skill-frontmatter.yaml skills/*/SKILL.md
+
+  check:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install bats on Linux
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install --yes bats
+      - name: Install bats on macOS
+        if: runner.os == 'macOS'
+        run: brew install bats-core
+      - name: Install yq if missing
+        run: command -v yq || brew install yq
+      - run: shellcheck ci/check-skills tests/check-skills.bats
+        if: runner.os == 'Linux'
+      - name: Skills follow the specification
+        run: ci/check-skills
+      - name: Tests
+        run: bats tests/check-skills.bats

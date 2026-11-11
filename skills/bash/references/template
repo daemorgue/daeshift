@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+
+# NAME: one line on what the script does. Run "NAME --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# Every outside program NAME runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(cp)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+
+  check_dependencies || exit 1
+  # The work goes here.
+  good "Done"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: NAME [OPTIONS] ARGUMENT
+
+DESCRIPTION
+    One or two lines on what NAME does.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

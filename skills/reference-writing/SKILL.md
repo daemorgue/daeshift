@@ -35,9 +35,12 @@ is not installed yet, say so and follow this skill alone.
   components, each with a link down. Use each element's title from the
   map, and its ID as the folder name.
 - **Start from the template** for the page's level:
-  `references/templates/project.md`, `system.md` or `container.md`
-  (`component.md` follows once its first page is approved).
-  The developer approved these as the standard (2026-11-11).
+  `references/templates/project.md`, `system.md`, `container.md` or
+  `component.md`. The developer approved these as the standard
+  (2026-11-11; `component.md` 2026-11-12).
+- **One rule, one page.** A container page states what holds at the
+  container's boundary and links down; a component page states its
+  own mechanics. Never state one rule on both.
 - **Same sections, same order, every time,** so a reader knows where to
   look:
 

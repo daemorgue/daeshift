@@ -18,4 +18,7 @@ quoted.
   on first meeting it: splitting docs this way "seemed overly
   opinionated and arbitrary".
 - Which style each kind uses, and where each kind lives, are daemorgue's
-  own choices (decision-15 and decision-16 on its board).
+  own choices (decision-15 and decision-16 on its board). Explanation
+  uses the user-documentation style because Diátaxis's explanation
+  admits opinion and analogy, which the technical-writing style
+  forbids.

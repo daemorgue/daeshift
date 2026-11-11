@@ -33,7 +33,7 @@ and this skill alone.
 | tutorial | tutorial-writing | style-user-documentation |
 | how-to guide | how-to-writing | style-user-documentation |
 | reference | reference-writing | style-technical-writing |
-| explanation | explanation-writing | style-technical-writing |
+| explanation | explanation-writing | style-user-documentation |
 
 ## Where each kind lives
 

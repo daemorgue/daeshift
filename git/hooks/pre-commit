@@ -4,13 +4,13 @@
 # $DAESHIFT_HOME/local/projects/ (see git/gitconfig). Every other file in
 # git/hooks/ is a link to this one, and the script reads its own name to
 # know which hook it is. For pre-commit and commit-msg it finds the
-# repo's project, hands the commit to pre-commit with the repo's config
-# from the project repo (.config/pre-commit/<repo>.yaml, or
-# _project.yaml for the project repo itself), and tells the hooks where
-# they run: DAESHIFT_PROJECT_ROOT (the project folder) and
-# DAESHIFT_REPO_KIND ("project" or "code"). For every hook it then runs
-# the repo's own hook of the same name, if any, since setting
-# core.hooksPath stops git from running them. Run
+# repo's project, hands the commit to pre-commit with the repo's configs
+# from the project repo (.config/pre-commit/_code.yaml for every code
+# repo, then <repo>.yaml; _project.yaml for the project repo itself),
+# and tells the hooks where they run: DAESHIFT_PROJECT_ROOT (the
+# project folder) and DAESHIFT_REPO_KIND ("project" or "code"). For
+# every hook it then runs the repo's own hook of the same name, if any,
+# since setting core.hooksPath stops git from running them. Run
 # "git/hooks/pre-commit --help" for usage.
 
 set -o nounset
@@ -82,6 +82,7 @@ find_project_root() {
 main() {
   local common_dir
   local config
+  local configs
   local daeshift_home="${HOME}/.daeshift"
   local hook_name="${0##*/}"
   local project_root
@@ -138,10 +139,19 @@ main() {
       export DAESHIFT_REPO_KIND="code"
     fi
     export DAESHIFT_PROJECT_ROOT="${project_root}"
-    config="${project_root}/${CONFIG_DIR}/${repo_name}.yaml"
-    if [[ -f "${config}" ]]; then
-      run_pre_commit "${config}" "${hook_name}" "$@" || exit 1
+    # A code repo runs the project's shared _code.yaml first, then its
+    # own file; the project repo runs _project.yaml alone.
+    configs=("${repo_name}")
+    if [[ "${DAESHIFT_REPO_KIND}" == "code" && "${repo_name}" != "_code" ]]
+    then
+      configs=("_code" "${repo_name}")
     fi
+    for config in "${configs[@]}"; do
+      config="${project_root}/${CONFIG_DIR}/${config}.yaml"
+      if [[ -f "${config}" ]]; then
+        run_pre_commit "${config}" "${hook_name}" "$@" || exit 1
+      fi
+    done
   fi
   run_own_hook "${hook_name}" "$@" || exit 1
 }
@@ -194,7 +204,7 @@ Usage: <git hook name> [GIT'S HOOK ARGUMENTS]
 
 DESCRIPTION
     Run by git, not by hand. For pre-commit and commit-msg, hands the
-    commit to pre-commit with the repo's config from its project repo.
+    commit to pre-commit with the repo's configs from its project repo.
     For every hook, then runs the repo's own hook of the same name.
 
 OPTIONS

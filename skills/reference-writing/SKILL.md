@@ -33,7 +33,10 @@ is not installed yet, say so and follow this skill alone.
   `maps/<repo>/` (the project repo's groma map, read with `groma view`): the
   system's page lists its containers, a container's page lists its
   components, each with a link down. Use each element's title from the
-  map, and its ID as the folder name.
+  map. A system's folder is named after its code repository
+  (`wiki/<repo>/`); a container's or component's folder takes its ID
+  from the map. A diagram's element aliases are free and need not match
+  the folders.
 - **Start from the template** for the page's level:
   `references/templates/project.md`, `system.md`, `container.md` or
   `component.md`. The developer approved these as the standard
@@ -74,8 +77,10 @@ is not installed yet, say so and follow this skill alone.
   to follow.
 - **Give a short example** of usage where it shows a fact faster than
   a sentence; no walkthroughs.
-- **Planned parts** get one line: what they will do and the task that
-  builds them.
+- **No task or decision IDs** anywhere on a reference page; the board
+  and the map track who builds what, and the explanation page cites
+  decisions.
+- **Planned parts** get one line: what they will do.
 
 ## Gotchas
 

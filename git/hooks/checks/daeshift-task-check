@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+
+# daeshift-task-check: reject a commit in a code repo unless its branch
+# names a task that is ready to be worked (decisions 3, 8 and 11): on
+# the project's board, In Progress, with acceptance criteria, for this
+# repo, with no subtasks and no unfinished dependency. pre-commit runs
+# it at the pre-commit and pre-merge-commit stages, with no files. Fails
+# closed: when the board cannot be read, the commit is rejected. Run
+# "daeshift-task-check --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# The task part of a branch name: tasks/task-<n>[.<m>...][-<slug>].
+readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
+# Prints one line about task $id: "missing", or its status, its number
+# of acceptance criteria, its project, whether it has subtasks and
+# whether it is ready, separated by tabs. The $ names are jq's.
+# shellcheck disable=SC2016
+readonly READ_TASK='
+  .tasks as $all
+  | ([$all[] | select(.id == $id)][0]) as $task
+  | if $task == null then "missing"
+    else [$task.status, ($task.acceptanceCriteriaCount // 0 | tostring),
+          ($task.project // ""),
+          ([$all[] | select(.parentTaskId == $id)] | length > 0
+           | tostring),
+          ($task.isReady // false | tostring)] | join("\t")
+    end'
+
+# Every outside program the check runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(backlog git jq)
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it, then try again."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints every reason task $1, described by line $2 from READ_TASK,
+# cannot be worked in repo $3, one per line.
+find_reasons() {
+  local children
+  local criteria
+  local project
+  local ready
+  local status
+
+  if [[ "$2" == "missing" ]]; then
+    echo "$1 is not on the board."
+    return 0
+  fi
+  IFS=$'\t' read -r status criteria project children ready <<<"$2"
+  if [[ "${status}" != "In Progress" ]]; then
+    echo "$1 is ${status}, not In Progress."
+  fi
+  if [[ "${criteria}" == "0" ]]; then
+    echo "$1 has no acceptance criteria."
+  fi
+  if [[ "${project}" != "$3" ]]; then
+    echo "$1 belongs to project '${project}', not '$3'."
+  fi
+  if [[ "${children}" == "true" ]]; then
+    echo "$1 has subtasks; work one of them instead."
+  fi
+  if [[ "${ready}" != "true" ]]; then
+    echo "$1 waits on a dependency that is not Done."
+  fi
+}
+
+main() {
+  local branch
+  local line
+  local reasons
+  local task
+  local task_id
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *)
+        err "daeshift-task-check takes no files. Give its hook" \
+          "pass_filenames: false."
+        exit 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "${DAESHIFT_PROJECT_ROOT:-}" || -z "${DAESHIFT_REPO_NAME:-}" ]]
+  then
+    err "DAESHIFT_PROJECT_ROOT or DAESHIFT_REPO_NAME is not set. Run" \
+      "this check through daeshift's git hooks, which set them."
+    exit 1
+  fi
+  check_dependencies || exit 1
+  # A detached HEAD (rebase, bisect) is on no branch.
+  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+    exit 0
+  fi
+  # A new repo's first commit has to land before any task branch exists.
+  if ! git rev-parse --quiet --verify HEAD >/dev/null; then
+    exit 0
+  fi
+  if [[ ! "${branch}" =~ ${BRANCH_TASK} ]]; then
+    err "Branch ${branch} names no task. Work on a branch named" \
+      "tasks/task-<id>-<slug> for a task In Progress."
+    exit 1
+  fi
+  task_id="TASK-${BASH_REMATCH[1]}"
+  if ! task="$(read_task "${task_id}")"; then
+    err "The board in ${DAESHIFT_PROJECT_ROOT} could not be read, so" \
+      "${task_id} cannot be checked."
+    exit 1
+  fi
+  reasons="$(find_reasons "${task_id}" "${task}" "${DAESHIFT_REPO_NAME}")"
+  if [[ -n "${reasons}" ]]; then
+    err "Branch ${branch} is not ready for commits:"
+    while IFS= read -r line; do
+      echo "    ${line}" >&2
+    done <<<"${reasons}"
+    exit 1
+  fi
+}
+
+# Prints the READ_TASK line for task $1 from the project's board. Fails
+# when the board cannot be read.
+read_task() {
+  local tasks
+
+  tasks="$(cd "${DAESHIFT_PROJECT_ROOT}" && backlog task list --json)" \
+    || return 1
+  jq -r --arg id "$1" "${READ_TASK}" <<<"${tasks}" || return 1
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: daeshift-task-check [OPTIONS]
+
+DESCRIPTION
+    Reject a commit unless the branch names a task that is on the
+    project's board, In Progress, with acceptance criteria, for this
+    repo, with no subtasks and no unfinished dependency. Run by
+    daeshift's git hooks in a code repo.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

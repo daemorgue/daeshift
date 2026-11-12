@@ -138,9 +138,9 @@ A linked worktree uses its main repo's file. A merge without conflicts
 runs the pre-merge-commit stage instead of pre-commit. daeshift's hooks
 need git 2.31 or later.
 
-Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder) and
+Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder),
 `DAESHIFT_REPO_KIND` (`project` for the project repo, `code` for a code
-repo).
+repo) and `DAESHIFT_REPO_NAME` (the repo's name, or `_project`).
 
 daeshift ships its own checks in `git/hooks/checks/`. The hook puts
 that folder on `PATH`, so a config names a check by its command alone,
@@ -160,6 +160,7 @@ repos:
 | Check | Stage | What it does |
 |-------|-------|--------------|
 | `daeshift-branch-check` | `pre-commit`, `pre-merge-commit` | Rejects a commit on a branch matching a `--deny` glob, or matching no `--allow` glob when any is given; with neither, `main` and `master` are denied. Globs match like GitHub's rulesets: `*` and `?` never match `/`, `**/` matches any folders; character classes are not supported. A new repo's first commit and a detached HEAD pass. When a `tasks/` branch would be allowed, the message suggests one. Give it `pass_filenames: false` and `always_run: true`. |
+| `daeshift-task-check` | `pre-commit`, `pre-merge-commit` | In a code repo, rejects a commit unless the branch `tasks/task-<id>-<slug>` names a task on the project's board that is In Progress, has acceptance criteria, belongs to this repo, has no subtasks and waits on no unfinished dependency. Fails closed when the board cannot be read. Needs `backlog` and `jq`. Give it `pass_filenames: false` and `always_run: true`. Like every local hook, `git commit --no-verify` skips it; the PR check on GitHub is the gate. |
 | `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Add it to the project repo's `_project.yaml` like the example above, with `files: '^\.config/pre-commit/.*\.yaml$'` and no `stages`. |
 | `daeshift-parent-status` | `pre-commit` | In the project repo, rejects a commit while a parent task's status does not follow its subtasks (In Progress while any is, Done when all are, To Do otherwise) or a parent lacks the label `parent`. Needs `backlog` and `jq`. Give it `pass_filenames: false` and `always_run: true`. |
 | `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit message that credits anyone besides its author: any `Co-Authored-By`, `Assisted-by`, `Generated-by`, `Made-with` or `Amp-Thread-ID` trailer, whatever it names, and Claude Code's "Generated with" footer. Credit people on GitHub instead, where squash merges add their own trailers; amending such a commit on this machine is rejected too. |

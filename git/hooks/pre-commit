@@ -8,7 +8,8 @@
 # from the project repo (.config/pre-commit/_code.yaml for every code
 # repo, then <repo>.yaml; _project.yaml for the project repo itself),
 # and tells the hooks where they run: DAESHIFT_PROJECT_ROOT (the
-# project folder) and DAESHIFT_REPO_KIND ("project" or "code"). For
+# project folder), DAESHIFT_REPO_KIND ("project" or "code") and
+# DAESHIFT_REPO_NAME (the repo's name, or "_project"). For
 # every hook it then runs the repo's own hook of the same name, if any,
 # since setting core.hooksPath stops git from running them. Run
 # "git/hooks/pre-commit --help" for usage.
@@ -139,6 +140,7 @@ main() {
       export DAESHIFT_REPO_KIND="code"
     fi
     export DAESHIFT_PROJECT_ROOT="${project_root}"
+    export DAESHIFT_REPO_NAME="${repo_name}"
     # A code repo runs the project's shared _code.yaml first, then its
     # own file; the project repo runs _project.yaml alone.
     configs=("${repo_name}")

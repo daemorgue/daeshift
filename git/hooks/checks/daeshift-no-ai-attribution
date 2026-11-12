@@ -13,11 +13,11 @@ set -o pipefail
 # add their own trailers.
 readonly CREDIT_TRAILERS='^[[:space:]]*(amp-thread-id|assisted-by|'\
 'co-authored-by|generated-by|made-with)[[:space:]]*:'
-# The link in Claude Code's "Generated with" footer.
-readonly FOOTER_LINKS='claude\.(ai/code|com/claude-code)'
-# git's scissors line, after any comment character. git hands commit-msg
+# Claude Code's "Generated with" footer, known by its link.
+readonly FOOTER='generated with.*claude\.(ai/code|com/claude-code)'
+# git's scissors line, after its comment marker. git hands commit-msg
 # the diff below it when committing with --verbose.
-readonly SCISSORS='^[^[:alnum:][:space:]] -+ >8 -+$'
+readonly SCISSORS='^[^[:alnum:][:space:]]+ -+ >8 -+$'
 
 ### Helpers begin
 err() { echo "[!] $*" >&2; }
@@ -35,8 +35,7 @@ find_credit() {
     if [[ "${line}" =~ ${SCISSORS} ]]; then
       break
     fi
-    if [[ "${line}" =~ ${CREDIT_TRAILERS} || "${line}" =~ ${FOOTER_LINKS} ]]
-    then
+    if [[ "${line}" =~ ${CREDIT_TRAILERS} || "${line}" =~ ${FOOTER} ]]; then
       echo "    line ${number}: ${line}"
     fi
   done < "$1"

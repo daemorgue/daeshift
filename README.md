@@ -138,6 +138,31 @@ Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder) and
 `DAESHIFT_REPO_KIND` (`project` for the project repo, `code` for a code
 repo).
 
+daeshift ships its own checks in `git/hooks/checks/`. The hook puts
+that folder on `PATH`, so a config names a check by its command alone,
+as a local hook:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: no-ai-attribution
+        name: no AI attribution
+        entry: daeshift-no-ai-attribution
+        language: unsupported
+        stages: [commit-msg]
+```
+
+| Check | Stage | What it does |
+|-------|-------|--------------|
+| `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit that credits an AI tool: a `Co-Authored-By` or similar trailer, a "Generated with" footer, an `aider: ` subject, or an AI tool in the author or committer. A person as co-author is fine. Add `args: [--pattern, REGEX]` to reject more. |
+| `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Give it `files: '^\.config/pre-commit/.*\.yaml$'` in the project repo's `_project.yaml`. |
+
+The checks only run through daeshift's hook; `pre-commit run` on its
+own cannot find them. A config that names a check the installed
+release lacks fails every commit, so turn a new check on only after
+installing the release that has it.
+
 A repo's own hooks in `.git/hooks/` still run, for the hooks git calls
 on a working clone: applypatch-msg, commit-msg, post-applypatch,
 post-checkout, post-commit, post-merge, post-rewrite, pre-applypatch,

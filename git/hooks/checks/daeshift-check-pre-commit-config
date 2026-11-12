@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+
+# daeshift-check-pre-commit-config: validate pre-commit configuration
+# files with daeshift's pinned pre-commit, which the dispatcher names in
+# DAESHIFT_PRE_COMMIT. Run "daeshift-check-pre-commit-config --help" for
+# usage.
+
+set -o nounset
+set -o pipefail
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+main() {
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -eq 0 ]]; then
+    usage 1 >&2
+  fi
+
+  if [[ -z "${DAESHIFT_PRE_COMMIT:-}" || ! -x "${DAESHIFT_PRE_COMMIT}" ]]; then
+    err "DAESHIFT_PRE_COMMIT does not name pre-commit. Run this check" \
+      "through daeshift's git hooks, which set it."
+    exit 1
+  fi
+  "${DAESHIFT_PRE_COMMIT}" validate-config "$@" || exit 1
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'USAGE'
+Usage: daeshift-check-pre-commit-config [OPTIONS] FILE...
+
+DESCRIPTION
+    Validate each pre-commit configuration FILE with daeshift's pinned
+    pre-commit, named in DAESHIFT_PRE_COMMIT.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+USAGE
+  exit "$1"
+}
+
+main "$@"

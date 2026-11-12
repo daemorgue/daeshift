@@ -4,7 +4,10 @@
 # home folder with a global git config that applies daeshift's
 # git/gitconfig to ~/.daeshift/local/projects/, a project repo "proj"
 # with a code repo "code" inside it, and a stand-in pre-commit that
-# records its arguments and fails when ~/pre-commit-fails exists.
+# records its arguments and fails when ~/pre-commit-fails exists. Tests
+# of daeshift's own checks replace the stand-in with the real pinned
+# pre-commit named in DAESHIFT_TEST_PRE_COMMIT, which CI always sets;
+# without it they are skipped.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -73,6 +76,43 @@ setup() {
   git init --quiet "${HOME}/elsewhere"
   commit_in "${HOME}/elsewhere"
   assert_equal "$(ls "${HOME}/pre-commit-calls" 2>/dev/null)" ""
+}
+
+@test "hooks reject an invalid pre-commit config with daeshift's check" {
+  if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
+    skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"
+  fi
+  ln -sf "${DAESHIFT_TEST_PRE_COMMIT}" "${stub}"
+  printf '%s\n' 'repos:' '- repo: local' '  hooks:' \
+    '  - id: check-pre-commit-config' '    name: pre-commit configs' \
+    '    entry: daeshift-check-pre-commit-config' \
+    '    language: unsupported' \
+    "    files: '^\\.config/pre-commit/.*\\.yaml\$'" \
+    > "${project}/.config/pre-commit/_project.yaml"
+  echo "repos: not-a-list" > "${project}/.config/pre-commit/code.yaml"
+  git -C "${project}" add --all
+  run git -C "${project}" commit --quiet --message "Add configs"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "code.yaml"
+  assert_equal "$(git -C "${project}" rev-list --all | wc -l | tr -d ' ')" 0
+}
+
+@test "hooks reject AI credit with daeshift's check, named by command" {
+  if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
+    skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"
+  fi
+  ln -sf "${DAESHIFT_TEST_PRE_COMMIT}" "${stub}"
+  printf '%s\n' 'repos:' '- repo: local' '  hooks:' \
+    '  - id: no-ai-attribution' '    name: no AI attribution' \
+    '    entry: daeshift-no-ai-attribution' '    language: unsupported' \
+    '    stages: [commit-msg]' > "${project}/.config/pre-commit/code.yaml"
+  touch "${code}/file"
+  git -C "${code}" add --all
+  run git -C "${code}" commit --quiet --message "Add a file" \
+    --message "Co-Authored-By: Claude <noreply@anthropic.com>"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "This commit credits an AI tool"
+  assert_equal "$(git -C "${code}" rev-list --all | wc -l | tr -d ' ')" 0
 }
 
 @test "hooks run nothing for a repo with no config" {

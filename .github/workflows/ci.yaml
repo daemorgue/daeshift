@@ -16,7 +16,8 @@ jobs:
           echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
       - run: >-
           shellcheck bin/daeshift ci/check-root ci/install-tools
-          git/hooks/pre-commit runners/pi/launch tests/*.bats
+          git/hooks/checks/* git/hooks/pre-commit runners/pi/launch
+          tests/*.bats
 
   test:
     strategy:
@@ -29,10 +30,29 @@ jobs:
         run: |
           ci/install-tools -q "${RUNNER_TEMP}/tools"
           echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13.5"
+      - name: Install pinned pre-commit for the hook tests
+        run: |
+          python3 -m venv "${RUNNER_TEMP}/pre-commit"
+          "${RUNNER_TEMP}/pre-commit/bin/pip" install --quiet \
+            --require-hashes --only-binary :all: -r requirements/pre-commit.txt
+          echo "DAESHIFT_TEST_PRE_COMMIT=${RUNNER_TEMP}/pre-commit/bin/pre-commit" \
+            >> "${GITHUB_ENV}"
       - name: Root holds no instruction files
         run: ci/check-root
       - name: Tests
-        run: bats tests
+        # The hook tests skip daeshift's checks without pre-commit; CI
+        # must never skip them. shell: bash adds pipefail, so a failing
+        # bats still fails the step through tee.
+        shell: bash
+        run: |
+          bats tests | tee "${RUNNER_TEMP}/bats.out"
+          if grep --quiet "# skip" "${RUNNER_TEMP}/bats.out"; then
+            echo "A test was skipped; CI must run every test." >&2
+            exit 1
+          fi
 
   pins:
     strategy:

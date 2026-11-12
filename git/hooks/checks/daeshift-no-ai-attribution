@@ -1,0 +1,181 @@
+#!/usr/bin/env bash
+
+# daeshift-no-ai-attribution: reject a commit that credits an AI tool,
+# in its message or in its author and committer. pre-commit runs it at
+# the commit-msg stage with the message file. Run
+# "daeshift-no-ai-attribution --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# Names and addresses of AI coding tools, matched without regard to case
+# in trailers, footers and the author and committer.
+readonly AI_TOOLS='claude|anthropic|copilot|chatgpt|openai|codex|'\
+'gemini|cursor|aider|devin|windsurf|codeium|\[bot\]'
+# Trailer keys that can carry credit.
+readonly CREDIT_TRAILERS='^(ai-assisted|assisted-by|co-authored-by|'\
+'generated-by|made-with):'
+# Footers such as "Generated with [Claude Code](https://claude.com/...)".
+readonly GENERATED_FOOTER='generated (with|by)'
+# aider's subject prefix.
+readonly SUBJECT_PREFIX='^aider: '
+
+# Every outside program the check runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(git)
+patterns=()
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints the name and address git will record for role $1
+# (GIT_AUTHOR_IDENT or GIT_COMMITTER_IDENT) when they credit an AI tool,
+# and prints nothing otherwise.
+check_identity() {
+  local identity
+
+  identity="$(git var "$1")" || return 1
+  # Drop the time and time zone that end the identity.
+  identity="${identity% *}"
+  identity="${identity% *}"
+  if [[ "${identity}" =~ ${AI_TOOLS} ]]; then
+    echo "${identity}"
+  fi
+}
+
+# Prints each line of message file $1 that credits an AI tool, as
+# "    message line <number>: <line>". Lines starting with "#" are git's
+# comments.
+check_message() {
+  local line
+  local number=0
+  local pattern
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    number=$((number + 1))
+    if [[ "${line}" == "#"* ]]; then
+      continue
+    fi
+    if line_credits_ai "${line}" "${number}"; then
+      echo "    message line ${number}: ${line}"
+      continue
+    fi
+    if [[ "${#patterns[@]}" -eq 0 ]]; then
+      continue
+    fi
+    for pattern in "${patterns[@]}"; do
+      if [[ "${line}" =~ ${pattern} ]]; then
+        echo "    message line ${number}: ${line}"
+        break
+      fi
+    done
+  done < "$1"
+}
+
+# Answers whether line $1, line number $2 of the message, credits an AI
+# tool.
+line_credits_ai() {
+  if [[ "$2" == "1" && "$1" =~ ${SUBJECT_PREFIX} ]]; then
+    return 0
+  fi
+  if [[ "$1" =~ ${CREDIT_TRAILERS} && "$1" =~ ${AI_TOOLS} ]]; then
+    return 0
+  fi
+  if [[ "$1" =~ ${GENERATED_FOOTER} && "$1" =~ ${AI_TOOLS} ]]; then
+    return 0
+  fi
+  return 1
+}
+
+main() {
+  local author
+  local committer
+  local found
+  local message_file
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "--pattern")
+        if [[ $# -lt 2 ]]; then
+          usage 1 >&2
+        fi
+        patterns+=("$2")
+        shift
+        ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+  message_file="$1"
+
+  check_dependencies || exit 1
+  shopt -s nocasematch
+  found="$(check_message "${message_file}")" || exit 1
+  author="$(check_identity GIT_AUTHOR_IDENT)" || exit 1
+  committer="$(check_identity GIT_COMMITTER_IDENT)" || exit 1
+  if [[ -z "${found}${author}${committer}" ]]; then
+    exit 0
+  fi
+  err "This commit credits an AI tool. Remove the credit, then commit" \
+    "again."
+  if [[ -n "${found}" ]]; then
+    echo "${found}" >&2
+  fi
+  if [[ -n "${author}" ]]; then
+    echo "    author: ${author}" >&2
+  fi
+  if [[ -n "${committer}" ]]; then
+    echo "    committer: ${committer}" >&2
+  fi
+  exit 1
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: daeshift-no-ai-attribution [OPTIONS] MESSAGE_FILE
+
+DESCRIPTION
+    Reject a commit whose message or author and committer credit an AI
+    tool. A person named in a Co-Authored-By line is allowed.
+
+OPTIONS
+    -h, --help           Display this help message
+        --pattern REGEX  Also reject message lines matching REGEX
+                         (case-insensitive; repeatable)
+    -q, --quiet          Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

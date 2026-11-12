@@ -155,7 +155,7 @@ repos:
 
 | Check | Stage | What it does |
 |-------|-------|--------------|
-| `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit that credits an AI tool: a `Co-Authored-By` or similar trailer, a "Generated with" footer, an `aider: ` subject, or an AI tool in the author or committer. A person as co-author is fine. Add `args: [--pattern, REGEX]` to reject more. |
+| `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit that credits an AI tool: a `Co-Authored-By` or similar trailer, a "Generated with" footer, an `aider: ` subject, or an AI tool in the author or committer. A person as co-author is fine, unless the name is also a tool's, such as Claude. Add `args: [--pattern, REGEX]` to reject more. |
 
 The checks only run through daeshift's hook; `pre-commit run` on its
 own cannot find them. A config that names a check the installed

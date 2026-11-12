@@ -8,26 +8,32 @@
 set -o nounset
 set -o pipefail
 
-# Addresses and markers that only AI tools use, rejected on any message
-# line and in the author and committer.
+# Addresses and markers that only AI tools use, rejected in the author,
+# the committer and credit trailers.
 readonly AI_ADDRESSES='noreply@anthropic\.com|@aider\.chat|'\
 'cursoragent@cursor\.com|@ampcode\.com|noreply@opencode\.ai|\[bot\]|'\
 '\(aider\)'
-# Names of AI tools as whole words, rejected in credit trailers and
-# "Generated with" lines.
-readonly AI_NAMES='(^|[^[:alnum:]])(aider|amp|anthropic|chatgpt|claude|'\
-'codeium|codex|copilot|cursor|devin|gemini|kiro|openai|opencode|qwen|'\
+# Names AI tools write for themselves, as whole words, rejected in the
+# name of a credit trailer (before its address) and in "Generated with"
+# lines. Names people also carry, such as Devin, are left to the
+# addresses above.
+readonly AI_NAMES='(^|[^[:alnum:]])(aider|anthropic|chatgpt|claude|'\
+'codeium|codex|copilot|cursor|gemini|openai|opencode|qwen|'\
 'windsurf)([^[:alnum:]]|$)'
 # Trailer keys that only AI tools write.
 readonly AI_TRAILERS='^[[:space:]]*amp-thread-id[[:space:]]*:'
-# Trailer keys that can carry credit.
+# Trailer keys whose name part can credit an AI tool.
 readonly CREDIT_TRAILERS='^[[:space:]]*(ai-assisted|assisted-by|'\
-'co-authored-by|generated-by|made-with|signed-off-by)[[:space:]]*:'
+'co-authored-by|generated-by|made-with)[[:space:]]*:'
 # Lines such as "🤖 Generated with [Claude Code](https://...)".
 readonly GENERATED_LINE='^[^[:alnum:]]*(created|generated|written) '\
 '(by|with) '
-# git's scissors line; git hands commit-msg the text below it too.
-readonly SCISSORS=' -+ >8 -+$'
+# git's scissors line, after any comment character; git hands
+# commit-msg the text below it too.
+readonly SCISSORS='^[^[:alnum:][:space:]] -+ >8 -+$'
+# Trailer keys whose address can credit an AI tool.
+readonly SIGNING_TRAILERS='^[[:space:]]*(ai-assisted|assisted-by|'\
+'co-authored-by|generated-by|made-with|signed-off-by)[[:space:]]*:'
 # aider's subject prefix.
 readonly SUBJECT_PREFIX='^aider: '
 
@@ -75,7 +81,8 @@ check_identity() {
 
 # Prints each line of message file $1 that credits an AI tool, as
 # "    message line <number>: <line>". Lines starting with git's comment
-# character are skipped, and checking stops at git's scissors line.
+# character are skipped, and checking stops at git's scissors line. With
+# core.commentChar set to "auto", only the scissors line is recognized.
 check_message() {
   local comment_char
   local line
@@ -88,10 +95,10 @@ check_message() {
   fi
   while IFS= read -r line || [[ -n "${line}" ]]; do
     number=$((number + 1))
+    if [[ "${line}" =~ ${SCISSORS} ]]; then
+      break
+    fi
     if [[ "${line}" == "${comment_char}"* ]]; then
-      if [[ "${line}" =~ ${SCISSORS} ]]; then
-        break
-      fi
       continue
     fi
     if line_credits_ai "${line}" "${number}"; then
@@ -116,10 +123,14 @@ line_credits_ai() {
   if [[ "$2" == "1" && "$1" =~ ${SUBJECT_PREFIX} ]]; then
     return 0
   fi
-  if [[ "$1" =~ ${AI_ADDRESSES} || "$1" =~ ${AI_TRAILERS} ]]; then
+  if [[ "$1" =~ ${AI_TRAILERS} ]]; then
     return 0
   fi
-  if [[ "$1" =~ ${CREDIT_TRAILERS} && "$1" =~ ${AI_NAMES} ]]; then
+  if [[ "$1" =~ ${SIGNING_TRAILERS} && "$1" =~ ${AI_ADDRESSES} ]]; then
+    return 0
+  fi
+  # The name part: the value after the key, before any "<address>".
+  if [[ "$1" =~ ${CREDIT_TRAILERS} && "${1%%<*}" =~ ${AI_NAMES} ]]; then
     return 0
   fi
   if [[ "$1" =~ ${GENERATED_LINE} && "$1" =~ ${AI_NAMES} ]]; then
@@ -204,7 +215,6 @@ OPTIONS
 EOF
   exit "$1"
 }
-
 
 # Answers whether $1 is a valid extended regular expression.
 valid_pattern() {

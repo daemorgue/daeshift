@@ -200,5 +200,4 @@ run_pre_commit() {
     --hook-type="${hook_name}" --hook-dir="${0%/*}" -- "$@"
 }
 
-
 main "$@"

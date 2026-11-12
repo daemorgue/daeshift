@@ -89,6 +89,13 @@ JSON
   assert_contains "${output}" "could not be read"
 }
 
+@test "daeshift-task-check judges the pushed branch at pre-push" {
+  echo '{"tasks": []}' > "${HOME}/board.json"
+  PRE_COMMIT_LOCAL_BRANCH=refs/heads/tasks/task-9-x run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "TASK-9 is not on the board."
+}
+
 @test "daeshift-task-check matches the branch's task ID exactly" {
   echo '{"tasks": [{"id": "TASK-7.2.1", "status": "In Progress"}]}' \
     > "${HOME}/board.json"

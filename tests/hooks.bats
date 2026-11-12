@@ -156,7 +156,7 @@ setup() {
   run git -C "${code}" push --quiet origin feature
   assert_equal "${status}" 1
   assert_contains "${output}" "Commits on feature are not allowed."
-  run git -C "${code}" push --quiet origin tasks/task-1-x
+  run git -C "${code}" push --quiet origin HEAD
   assert_equal "${status}" 0
 }
 

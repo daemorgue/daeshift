@@ -117,8 +117,10 @@ on for that folder only:
   path = ~/.daeshift/git/gitconfig
 ```
 
-At each commit, daeshift's hook finds the repo's project and hands the
-commit to [pre-commit], using the repo's config from the project repo:
+At each commit and push, daeshift's hook finds the repo's project and
+hands the hook to [pre-commit] (at the `pre-commit`, `pre-merge-commit`,
+`commit-msg` and `pre-push` stages), using the repo's configs from the
+project repo:
 
 ```
 <project>/.config/pre-commit/_code.yaml       every code repo, run first
@@ -159,8 +161,8 @@ repos:
 
 | Check | Stage | What it does |
 |-------|-------|--------------|
-| `daeshift-branch-check` | `pre-commit`, `pre-merge-commit` | Rejects a commit on a branch matching a `--deny` glob, or matching no `--allow` glob when any is given; with neither, `main` and `master` are denied. Globs match like GitHub's rulesets: `*` and `?` never match `/`, `**/` matches any folders; character classes are not supported. A new repo's first commit, and a detached HEAD during a rebase or bisect, pass. When a `tasks/` branch would be allowed, the message suggests one. Give it `pass_filenames: false` and `always_run: true`. |
-| `daeshift-task-check` | `pre-commit`, `pre-merge-commit` | In a code repo, rejects a commit unless the branch `tasks/task-<id>-<slug>` names a task on the project's board that is In Progress, has acceptance criteria, belongs to this repo, has no subtasks and waits on no unfinished dependency of its own (a parent's dependencies don't count). Fails closed when the board cannot be read. Needs `git`, `backlog` and `jq`. Give it `pass_filenames: false` and `always_run: true`. Like every local hook, `git commit --no-verify` skips it; the PR check on GitHub (planned) will be the gate. |
+| `daeshift-branch-check` | `pre-commit`, `pre-merge-commit`, `pre-push` | Rejects a commit on a branch matching a `--deny` glob, or matching no `--allow` glob when any is given; with neither, `main` and `master` are denied. Globs match like GitHub's rulesets: `*` and `?` never match `/`, `**/` matches any folders; character classes are not supported. A new repo's first commit, and a detached HEAD during a rebase or bisect, pass. When a `tasks/` branch would be allowed, the message suggests one. Give it `pass_filenames: false` and `always_run: true`. At `pre-push` it checks the branch being pushed (only the first one in a multi-branch push). |
+| `daeshift-task-check` | `pre-commit`, `pre-merge-commit`, `pre-push` | In a code repo, rejects a commit unless the branch `tasks/task-<id>-<slug>` names a task on the project's board that is In Progress, has acceptance criteria, belongs to this repo, has no subtasks and waits on no unfinished dependency of its own (a parent's dependencies don't count). Fails closed when the board cannot be read. Needs `git`, `backlog` and `jq`. Give it `pass_filenames: false` and `always_run: true`. Like every local hook, `git commit --no-verify` skips it; the PR check on GitHub (planned) will be the gate. At `pre-push` it checks the branch being pushed (only the first one in a multi-branch push). |
 | `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Add it to the project repo's `_project.yaml` like the example above, with `files: '^\.config/pre-commit/.*\.yaml$'` and no `stages`. |
 | `daeshift-parent-status` | `pre-commit` | In the project repo, rejects a commit while a parent task's status does not follow its subtasks (In Progress while any is, Done when all are, To Do otherwise) or a parent lacks the label `parent`. Needs `backlog` and `jq`. Give it `pass_filenames: false` and `always_run: true`. |
 | `daeshift-commit-prefix` | `commit-msg` | Rejects a commit whose subject does not start with `TASK-<id>:`. In `_code.yaml` give it `--match-branch`, so the ID must be the branch's task; in `_project.yaml` give it `--allow-board --on-board`, so `Board:` is also accepted and the task must be on the board. The subject after `fixup!`, `squash!` or `amend!`, and inside `Revert "…"` or `Reapply "…"`, is checked the same way. Merge commits and a new repo's first commit are exempt. |

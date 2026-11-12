@@ -57,6 +57,7 @@ setup() {
     'call="$* kind=${DAESHIFT_REPO_KIND} name=${DAESHIFT_REPO_NAME}"' \
     'call="${call} root=${DAESHIFT_PROJECT_ROOT}"' \
     'echo "${call}" >> "${HOME}/pre-commit-calls"' \
+    'cat >> "${HOME}/pre-commit-stdin"' \
     'if [[ -e "${HOME}/pre-commit-fails" ]]; then exit 1; fi' > "${stub}"
   chmod +x "${stub}"
   git init --quiet "${project}"
@@ -64,11 +65,32 @@ setup() {
   git init --quiet "${code}"
 }
 
-@test "commit-msg hands pre-commit the message file" {
+@test "commit-msg hands pre-commit the message file, untouched" {
   touch "${project}/.config/pre-commit/code.yaml"
   commit_in "${code}"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--hook-stage commit-msg --commit-msg-filename"
+    "--hook-type=commit-msg --hook-dir="
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "-- .git/COMMIT_EDITMSG"
+}
+
+@test "hooks hand pre-push's arguments and refs on untouched" {
+  touch "${project}/.config/pre-commit/code.yaml"
+  # The own hook's lines must reach its file unexpanded.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/usr/bin/env bash' 'echo "$*" > "${HOME}/own-args"' \
+    'cat > "${HOME}/own-stdin"' > "${code}/.git/hooks/pre-push"
+  chmod +x "${code}/.git/hooks/pre-push"
+  cd "${code}" || return 1
+  echo "refs/heads/a 1111 refs/heads/a 0000" \
+    | "${HOME}/.daeshift/git/hooks/pre-push" -h --quiet
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" \
+    "--hook-type=pre-push --hook-dir="
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "-- -h --quiet"
+  assert_equal "$(cat "${HOME}/pre-commit-stdin")" \
+    "refs/heads/a 1111 refs/heads/a 0000"
+  assert_equal "$(cat "${HOME}/own-args")" "-h --quiet"
+  assert_equal "$(cat "${HOME}/own-stdin")" \
+    "refs/heads/a 1111 refs/heads/a 0000"
 }
 
 @test "hooks ignore _code.yaml in the project repo" {
@@ -112,6 +134,30 @@ setup() {
   git -C "${project}" add --all
   git -C "${project}" commit --quiet --message "Add configs"
   assert_equal "$(git -C "${project}" rev-list --all | wc -l | tr -d ' ')" 1
+}
+
+@test "hooks refuse a push of a branch the branch check denies" {
+  if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
+    skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"
+  fi
+  ln -sf "${DAESHIFT_TEST_PRE_COMMIT}" "${stub}"
+  printf '%s\n' 'repos:' '- repo: local' '  hooks:' \
+    '  - id: branch-check' '    name: branch check' \
+    '    entry: daeshift-branch-check' '    language: unsupported' \
+    '    stages: [pre-push]' '    pass_filenames: false' \
+    '    always_run: true' "    args: [--allow, 'tasks/*']" \
+    > "${project}/.config/pre-commit/_code.yaml"
+  git init --quiet --bare "${HOME}/remote.git"
+  git -C "${code}" remote add origin "${HOME}/remote.git"
+  commit_in "${code}"
+  git -C "${code}" switch --quiet --create feature
+  commit_in "${code}"
+  git -C "${code}" switch --quiet --create tasks/task-1-x
+  run git -C "${code}" push --quiet origin feature
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Commits on feature are not allowed."
+  run git -C "${code}" push --quiet origin tasks/task-1-x
+  assert_equal "${status}" 0
 }
 
 @test "hooks reject a commit on main with _code.yaml's branch check" {
@@ -174,8 +220,9 @@ setup() {
   touch "${project}/.config/pre-commit/_code.yaml"
   commit_in "${code}"
   assert_contains "$(head -n 1 "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/_code.yaml"
-  assert_equal "$(grep -c "code.yaml --hook-stage" "${HOME}/pre-commit-calls")" 2
+    "--config=${project}/.config/pre-commit/_code.yaml"
+  assert_equal \
+    "$(grep -c "_code.yaml --hook-type" "${HOME}/pre-commit-calls")" 2
 }
 
 @test "hooks run _code.yaml before the code repo's own config" {
@@ -183,9 +230,9 @@ setup() {
     "${project}/.config/pre-commit/code.yaml"
   commit_in "${code}"
   assert_contains "$(sed -n 1p "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/_code.yaml"
+    "--config=${project}/.config/pre-commit/_code.yaml"
   assert_contains "$(sed -n 2p "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/code.yaml"
+    "--config=${project}/.config/pre-commit/code.yaml"
 }
 
 @test "hooks run nothing for a repo with no config" {
@@ -197,9 +244,10 @@ setup() {
   touch "${project}/.config/pre-commit/code.yaml"
   commit_in "${code}"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/code.yaml"
+    "--config=${project}/.config/pre-commit/code.yaml"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--hook-stage pre-commit kind=code name=code"
+    "--hook-type=pre-commit"
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "kind=code name=code"
 }
 
 @test "hooks skip the code repo's own config when _code.yaml fails" {
@@ -249,7 +297,7 @@ setup() {
   touch "${project}/.config/pre-commit/_project.yaml"
   commit_in "${project}"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/_project.yaml"
+    "--config=${project}/.config/pre-commit/_project.yaml"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "kind=project name=_project"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" "root=${project}"
@@ -262,6 +310,6 @@ setup() {
   rm "${HOME}/pre-commit-calls"
   commit_in "${project}/wt"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--config ${project}/.config/pre-commit/code.yaml"
+    "--config=${project}/.config/pre-commit/code.yaml"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" "name=code"
 }

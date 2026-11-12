@@ -112,7 +112,10 @@ main() {
   if [[ -z "$(git for-each-ref --count=1)" ]]; then
     exit 0
   fi
-  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+  # At pre-push, pre-commit names the branch being pushed.
+  if [[ -n "${PRE_COMMIT_LOCAL_BRANCH:-}" ]]; then
+    branch="${PRE_COMMIT_LOCAL_BRANCH#refs/heads/}"
+  elif ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
     # A rebase or bisect runs on a detached HEAD; other commits there
     # name no task.
     if in_rebase_or_bisect; then

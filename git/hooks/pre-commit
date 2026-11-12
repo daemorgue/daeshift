@@ -176,14 +176,14 @@ run_pre_commit() {
   local pre_commit
 
   pre_commit="$(find_pre_commit)" || return 1
-  export DAESHIFT_PRE_COMMIT="${pre_commit}"
   if [[ "${hook_name}" == "commit-msg" ]]; then
-    PATH="${checks_dir}:${PATH}" "${pre_commit}" run --config "${config}" \
-      --hook-stage commit-msg --commit-msg-filename "$3"
+    DAESHIFT_PRE_COMMIT="${pre_commit}" PATH="${checks_dir}:${PATH}" \
+      "${pre_commit}" run --config "${config}" --hook-stage commit-msg \
+      --commit-msg-filename "$3"
   else
     # pre-commit, or pre-merge-commit for a merge without conflicts.
-    PATH="${checks_dir}:${PATH}" "${pre_commit}" run --config "${config}" \
-      --hook-stage "${hook_name}"
+    DAESHIFT_PRE_COMMIT="${pre_commit}" PATH="${checks_dir}:${PATH}" \
+      "${pre_commit}" run --config "${config}" --hook-stage "${hook_name}"
   fi
 }
 

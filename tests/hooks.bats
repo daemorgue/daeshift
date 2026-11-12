@@ -91,6 +91,22 @@ setup() {
   assert_equal "$(git -C "${code}" rev-list --all | wc -l | tr -d ' ')" 1
 }
 
+@test "hooks pass valid pre-commit configs with daeshift's check" {
+  if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
+    skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"
+  fi
+  ln -sf "${DAESHIFT_TEST_PRE_COMMIT}" "${stub}"
+  printf '%s\n' 'repos:' '- repo: local' '  hooks:' \
+    '  - id: check-pre-commit-config' '    name: pre-commit configs' \
+    '    entry: daeshift-check-pre-commit-config' \
+    '    language: unsupported' \
+    "    files: '^\\.config/pre-commit/.*\\.yaml\$'" \
+    > "${project}/.config/pre-commit/_project.yaml"
+  git -C "${project}" add --all
+  git -C "${project}" commit --quiet --message "Add configs"
+  assert_equal "$(git -C "${project}" rev-list --all | wc -l | tr -d ' ')" 1
+}
+
 @test "hooks reject an invalid pre-commit config with daeshift's check" {
   if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
     skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"

@@ -22,6 +22,9 @@ readonly CONFIG_DIR=".config/pre-commit"
 # Every outside program the dispatcher runs. check_dependencies reports
 # each missing one before any work starts.
 dependencies=(cat git mktemp rm)
+# The file holding git's standard input for pre-push, or /dev/null. Not
+# local to main: the EXIT trap that removes it runs after main returns.
+stdin_file="/dev/null"
 
 ### Helpers begin
 err() { echo "[!] $*" >&2; }
@@ -90,7 +93,6 @@ main() {
   local projects_dir
   local repo_name
   local repo_top
-  local stdin_file
 
   # No option loop: every argument is git's and passes through as is.
   # This is a deliberate exception to the bash skill's -h/-q rule, as in
@@ -104,7 +106,6 @@ main() {
   fi
   # git feeds pre-push its refs on standard input; keep them for every
   # pre-commit call and the repo's own hook.
-  stdin_file="/dev/null"
   if [[ "${hook_name}" == "pre-push" ]]; then
     stdin_file="$(mktemp)" || exit 1
     trap 'rm -f "${stdin_file}"' EXIT

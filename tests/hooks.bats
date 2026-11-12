@@ -81,8 +81,12 @@ setup() {
     'cat > "${HOME}/own-stdin"' > "${code}/.git/hooks/pre-push"
   chmod +x "${code}/.git/hooks/pre-push"
   cd "${code}" || return 1
+  mkdir "${HOME}/tmp"
   echo "refs/heads/a 1111 refs/heads/a 0000" \
-    | "${HOME}/.daeshift/git/hooks/pre-push" -h --quiet
+    | TMPDIR="${HOME}/tmp" "${HOME}/.daeshift/git/hooks/pre-push" -h --quiet \
+    2> "${HOME}/pre-push-errors"
+  assert_equal "$(cat "${HOME}/pre-push-errors")" ""
+  assert_equal "$(ls "${HOME}/tmp")" ""
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--hook-type=pre-push --hook-dir="
   assert_contains "$(cat "${HOME}/pre-commit-calls")" "-- -h --quiet"

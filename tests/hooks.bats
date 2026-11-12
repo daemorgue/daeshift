@@ -105,7 +105,7 @@ setup() {
   run git -C "${code}" commit --quiet --message "Add a file" \
     --message "Co-Authored-By: Claude <noreply@anthropic.com>"
   assert_equal "${status}" 1
-  assert_contains "${output}" "This commit credits an AI tool"
+  assert_contains "${output}" "Commit messages credit no one but their author"
   assert_equal "$(git -C "${code}" rev-list --all | wc -l | tr -d ' ')" 0
 }
 

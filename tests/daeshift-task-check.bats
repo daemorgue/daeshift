@@ -78,6 +78,7 @@ JSON
   ln -s "$(command -v bash)" "${HOME}/only-git/bash"
   PATH="${HOME}/only-git" run "${check}"
   assert_equal "${status}" 1
+  assert_contains "${output}" "backlog was not found"
   assert_contains "${output}" "jq was not found"
 }
 
@@ -86,6 +87,13 @@ JSON
   run "${check}"
   assert_equal "${status}" 1
   assert_contains "${output}" "could not be read"
+}
+
+@test "daeshift-task-check fails outside a git repo" {
+  mkdir "${HOME}/not-a-repo"
+  cd "${HOME}/not-a-repo" || return 1
+  run "${check}"
+  assert_equal "${status}" 1
 }
 
 @test "daeshift-task-check matches the branch's task ID exactly" {

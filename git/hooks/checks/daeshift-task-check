@@ -14,9 +14,10 @@ set -o pipefail
 # The task part of a branch name: tasks/task-<n>[.<m>...][-<slug>].
 readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
 # Prints every reason task $id cannot be worked in repo $repo, one per
-# line, and nothing when it can. Dependencies are judged by backlog's
-# isReady, since its task list carries no dependency list. The $ names
-# are jq's.
+# line, and nothing when it can. The task's own dependencies (not its
+# parent's) are judged by backlog's isReady, since its task list carries
+# no dependency list; isReady is false for a Done task, which already
+# fails the status rule. The $ names are jq's.
 # shellcheck disable=SC2016
 readonly FIND_REASONS='
   .tasks as $all
@@ -33,7 +34,7 @@ readonly FIND_REASONS='
        else empty end),
       (if any($all[]; .parentTaskId == $id)
        then "\($id) has subtasks; work one of them instead." else empty end),
-      (if ($task.isReady // false) | not
+      (if $task.status != "Done" and (($task.isReady // false) | not)
        then "\($id) waits on a dependency that is not Done." else empty end)
     end'
 

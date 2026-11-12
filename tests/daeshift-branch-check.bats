@@ -65,6 +65,13 @@ setup() {
   assert_contains "${output}" "Commits on master are not allowed"
 }
 
+@test "daeshift-branch-check fails outside a git repo" {
+  mkdir "${HOME}/not-a-repo"
+  cd "${HOME}/not-a-repo" || return 1
+  run "${check}"
+  assert_equal "${status}" 1
+}
+
 @test "daeshift-branch-check lets --deny win over --allow" {
   git switch --quiet --create release/old
   run "${check}" --allow 'release/*' --deny 'release/old'

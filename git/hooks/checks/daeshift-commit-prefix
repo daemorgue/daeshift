@@ -1,0 +1,224 @@
+#!/usr/bin/env bash
+
+# daeshift-commit-prefix: reject a commit whose subject does not name
+# its task, so every commit links to the board. pre-commit runs it at
+# the commit-msg stage with the message file. Run
+# "daeshift-commit-prefix --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# A subject naming board work outside any task.
+readonly BOARD_SUBJECT='^Board: [^ ]'
+# The task part of a branch name: tasks/task-<n>[.<m>...][-<slug>].
+readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
+# Markers a rebase folds away; the subject after them is checked.
+readonly REBASE_MARKER='^(fixup|squash|amend)! '
+# git revert's subjects, Revert "..." and (since git 2.43) Reapply
+# "..."; the subject inside is checked, unwrapped as often as needed.
+readonly REVERT_SUBJECT='^(Revert|Reapply) "(.*)"$'
+# A subject naming a task: TASK-<n>[.<m>...]: , a space, then text.
+readonly TASK_SUBJECT='^TASK-([0-9]+(\.[0-9]+)*): [^ ]'
+
+# Every outside program the check runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(cat git)
+allow_board="false"
+match_branch="false"
+on_board="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it, then try again."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints the current branch, or during a rebase the branch being
+# rebased. Fails on a detached HEAD outside a rebase.
+find_branch() {
+  local head_name
+  local path
+
+  if git symbolic-ref --quiet --short HEAD; then
+    return 0
+  fi
+  for path in rebase-merge/head-name rebase-apply/head-name; do
+    head_name="$(git rev-parse --git-path "${path}")" || return 1
+    if [[ -f "${head_name}" ]]; then
+      head_name="$(cat "${head_name}")" || return 1
+      echo "${head_name#refs/heads/}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Prints the subject of message file $1: its first line that is not a
+# git comment.
+find_subject() {
+  local comment_char
+  local line
+
+  comment_char="$(git config core.commentString)" \
+    || comment_char="$(git config core.commentChar)"
+  if [[ -z "${comment_char}" || "${comment_char}" == "auto" ]]; then
+    comment_char="#"
+  fi
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    if [[ "${line}" =~ [^[:space:]] && "${line}" != "${comment_char}"* ]]
+    then
+      echo "${line}"
+      return 0
+    fi
+  done < "$1"
+}
+
+# Answers whether git is completing a merge, or the repo has no commit
+# yet, in which cases the subject is not checked.
+is_exempt_commit() {
+  if [[ -e "$(git rev-parse --git-path MERGE_HEAD)" ]]; then
+    return 0
+  fi
+  if [[ -z "$(git for-each-ref --count=1)" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+# Answers whether task $1 is on the project's board. Fails with status 2
+# when the board cannot be read.
+is_on_board() {
+  local found
+  local tasks
+
+  tasks="$(cd "${DAESHIFT_PROJECT_ROOT}" && backlog task list --json)" \
+    || return 2
+  found="$(jq -r --arg id "$1" 'any(.tasks[]; .id == $id)' \
+    <<<"${tasks}")" || return 2
+  if [[ "${found}" == "true" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+main() {
+  local branch
+  local status
+  local subject
+  local task_id
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "--allow-board") allow_board="true" ;;
+      "-h"|"--help") usage 0 ;;
+      "--match-branch") match_branch="true" ;;
+      "--on-board") on_board="true" ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+  if [[ "${on_board}" == "true" ]]; then
+    dependencies+=(backlog jq)
+    if [[ -z "${DAESHIFT_PROJECT_ROOT:-}" ]]; then
+      err "DAESHIFT_PROJECT_ROOT is not set. Run this check through" \
+        "daeshift's git hooks, which set it."
+      exit 1
+    fi
+  fi
+
+  check_dependencies || exit 1
+  if is_exempt_commit; then
+    exit 0
+  fi
+  subject="$(find_subject "$1")" || exit 1
+  while [[ "${subject}" =~ ${REBASE_MARKER} ]]; do
+    subject="${subject#*! }"
+  done
+  while [[ "${subject}" =~ ${REVERT_SUBJECT} ]]; do
+    subject="${BASH_REMATCH[2]}"
+  done
+  if [[ "${allow_board}" == "true" && "${subject}" =~ ${BOARD_SUBJECT} ]]
+  then
+    exit 0
+  fi
+  if [[ ! "${subject}" =~ ${TASK_SUBJECT} ]]; then
+    if [[ "${allow_board}" == "true" ]]; then
+      err "The subject must start with TASK-<id>: or Board:, not:" \
+        "${subject}"
+    else
+      err "The subject must start with TASK-<id>:, not: ${subject}"
+    fi
+    exit 1
+  fi
+  task_id="TASK-${BASH_REMATCH[1]}"
+  if [[ "${match_branch}" == "true" ]] \
+    && branch="$(find_branch)" \
+    && [[ "${branch}" =~ ${BRANCH_TASK} ]] \
+    && [[ "TASK-${BASH_REMATCH[1]}" != "${task_id}" ]]; then
+    err "The subject names ${task_id}, but branch ${branch} is for" \
+      "TASK-${BASH_REMATCH[1]}."
+    exit 1
+  fi
+  if [[ "${on_board}" == "true" ]]; then
+    is_on_board "${task_id}"
+    status=$?
+    if [[ "${status}" -eq 2 ]]; then
+      err "The board in ${DAESHIFT_PROJECT_ROOT} could not be read, so" \
+        "${task_id} cannot be checked."
+      exit 1
+    fi
+    if [[ "${status}" -eq 1 ]]; then
+      err "The subject names ${task_id}, which is not on the board."
+      exit 1
+    fi
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: daeshift-commit-prefix [OPTIONS] MESSAGE_FILE
+
+DESCRIPTION
+    Reject a commit whose subject does not start with TASK-<id>: and
+    text. The subject after fixup!, squash! or amend!, and inside git
+    revert's Revert "..." or Reapply "...", is checked the same way. Merge commits and a
+    new repo's first commit are exempt.
+
+OPTIONS
+        --allow-board    Also accept a subject starting with Board:
+    -h, --help           Display this help message
+        --match-branch   Require the branch's task, for a branch named
+                         tasks/task-<id>-<slug>
+        --on-board       Require the task to be on the project's board
+    -q, --quiet          Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

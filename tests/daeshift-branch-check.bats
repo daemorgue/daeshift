@@ -65,6 +65,15 @@ setup() {
   assert_contains "${output}" "Commits on master are not allowed"
 }
 
+@test "daeshift-branch-check judges the pushed branch at pre-push" {
+  git switch --quiet --create tasks/task-1-x
+  PRE_COMMIT_LOCAL_BRANCH=refs/heads/feature run "${check}" --allow 'tasks/*'
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Commits on feature are not allowed."
+  PRE_COMMIT_LOCAL_BRANCH=HEAD run "${check}" --allow 'tasks/*'
+  assert_equal "${status}" 0
+}
+
 @test "daeshift-branch-check lets --deny win over --allow" {
   git switch --quiet --create release/old
   run "${check}" --allow 'release/*' --deny 'release/old'

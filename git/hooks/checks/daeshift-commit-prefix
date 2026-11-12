@@ -207,8 +207,8 @@ Usage: daeshift-commit-prefix [OPTIONS] MESSAGE_FILE
 DESCRIPTION
     Reject a commit whose subject does not start with TASK-<id>: and
     text. The subject after fixup!, squash! or amend!, and inside git
-    revert's Revert "..." or Reapply "...", is checked the same way. Merge commits and a
-    new repo's first commit are exempt.
+    revert's Revert "..." or Reapply "...", is checked the same way.
+    Merge commits and a new repo's first commit are exempt.
 
 OPTIONS
         --allow-board    Also accept a subject starting with Board:

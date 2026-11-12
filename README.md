@@ -156,7 +156,6 @@ repos:
 | Check | Stage | What it does |
 |-------|-------|--------------|
 | `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit that credits an AI tool: a `Co-Authored-By` or similar trailer, a "Generated with" footer, an `aider: ` subject, or an AI tool in the author or committer. A person as co-author is fine. Add `args: [--pattern, REGEX]` to reject more. |
-| `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Give it `files: '^\.config/pre-commit/.*\.yaml$'` in the project repo's `_project.yaml`. |
 
 The checks only run through daeshift's hook; `pre-commit run` on its
 own cannot find them. A config that names a check the installed

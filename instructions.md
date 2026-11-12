@@ -59,8 +59,9 @@ with a bare label.
 
 Present one task per message. When several tasks need the developer (an
 approval, a plan, a task to close, a question), take them one at a
-time: the current task first, then by priority with board order
-breaking ties. Present the next only after the developer has answered.
+time: the current task first, then in the order of a fresh run of the
+project's next-task command, with tasks it does not list last. Present
+the next only after the developer has answered.
 The cold-start report may list several tasks, but asks about one.
 
 - **First line, bold:** `TASK-<id> · <title>` of the task being worked.

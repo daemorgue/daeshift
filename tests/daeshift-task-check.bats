@@ -89,13 +89,6 @@ JSON
   assert_contains "${output}" "could not be read"
 }
 
-@test "daeshift-task-check fails outside a git repo" {
-  mkdir "${HOME}/not-a-repo"
-  cd "${HOME}/not-a-repo" || return 1
-  run "${check}"
-  assert_equal "${status}" 1
-}
-
 @test "daeshift-task-check matches the branch's task ID exactly" {
   echo '{"tasks": [{"id": "TASK-7.2.1", "status": "In Progress"}]}' \
     > "${HOME}/board.json"

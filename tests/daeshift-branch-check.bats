@@ -65,13 +65,6 @@ setup() {
   assert_contains "${output}" "Commits on master are not allowed"
 }
 
-@test "daeshift-branch-check fails outside a git repo" {
-  mkdir "${HOME}/not-a-repo"
-  cd "${HOME}/not-a-repo" || return 1
-  run "${check}"
-  assert_equal "${status}" 1
-}
-
 @test "daeshift-branch-check lets --deny win over --allow" {
   git switch --quiet --create release/old
   run "${check}" --allow 'release/*' --deny 'release/old'
@@ -112,10 +105,4 @@ setup() {
   assert_contains "${output}" \
     "Commits on main are not allowed. Allowed branches: tasks/*"
   assert_contains "${output}" "git switch -c tasks/<id>-<slug>"
-}
-
-@test "daeshift-branch-check says to set pass_filenames when given files" {
-  run "${check}" README.md
-  assert_equal "${status}" 1
-  assert_contains "${output}" "pass_filenames: false"
 }

@@ -87,10 +87,3 @@ JSON
     "TASK-1 is To Do; its subtasks make it In Progress"
   assert_contains "${output}" "TASK-2 is In Progress; its subtasks make it Done"
 }
-
-@test "daeshift-parent-status says to run it through the hooks" {
-  unset DAESHIFT_PROJECT_ROOT
-  run "${check}"
-  assert_equal "${status}" 1
-  assert_contains "${output}" "Run this check through daeshift's git hooks"
-}

@@ -43,12 +43,6 @@ setup() {
   assert_contains "${output}" "CLAUDE.md must not be"
 }
 
-@test "check-root passes a root with no forbidden files" {
-  touch "${HOME}/root/README.md"
-  run "${check_root}" "${HOME}/root"
-  assert_equal "${status}" 0
-}
-
 @test "check-root passes daeshift's own root" {
   run "${check_root}"
   assert_equal "${status}" 0

@@ -54,7 +54,8 @@ setup() {
   # The stand-in's own lines must reach its file unexpanded.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/usr/bin/env bash' \
-    'call="$* kind=${DAESHIFT_REPO_KIND} root=${DAESHIFT_PROJECT_ROOT}"' \
+    'call="$* kind=${DAESHIFT_REPO_KIND} name=${DAESHIFT_REPO_NAME}"' \
+    'call="${call} root=${DAESHIFT_PROJECT_ROOT}"' \
     'echo "${call}" >> "${HOME}/pre-commit-calls"' \
     'if [[ -e "${HOME}/pre-commit-fails" ]]; then exit 1; fi' > "${stub}"
   chmod +x "${stub}"
@@ -198,7 +199,7 @@ setup() {
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--config ${project}/.config/pre-commit/code.yaml"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
-    "--hook-stage pre-commit kind=code"
+    "--hook-stage pre-commit kind=code name=code"
 }
 
 @test "hooks skip the code repo's own config when _code.yaml fails" {
@@ -249,7 +250,8 @@ setup() {
   commit_in "${project}"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--config ${project}/.config/pre-commit/_project.yaml"
-  assert_contains "$(cat "${HOME}/pre-commit-calls")" "kind=project"
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" \
+    "kind=project name=_project"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" "root=${project}"
 }
 
@@ -261,4 +263,5 @@ setup() {
   commit_in "${project}/wt"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--config ${project}/.config/pre-commit/code.yaml"
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "name=code"
 }

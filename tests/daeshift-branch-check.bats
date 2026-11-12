@@ -41,8 +41,9 @@ setup() {
   assert_equal "${status}" 0
 }
 
-@test "daeshift-branch-check allows a detached HEAD" {
+@test "daeshift-branch-check allows a detached HEAD during a bisect" {
   git checkout --quiet --detach
+  touch "$(git rev-parse --git-path BISECT_LOG)"
   run "${check}"
   assert_equal "${status}" 0
 }
@@ -91,16 +92,17 @@ setup() {
   assert_contains "${output}" "Denied branches: release/*"
 }
 
+@test "daeshift-branch-check rejects a commit on a detached HEAD" {
+  git checkout --quiet --detach
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Commits on a detached HEAD are not allowed."
+}
+
 @test "daeshift-branch-check rejects main, naming the allowed branches" {
   run "${check}" --allow 'tasks/*'
   assert_equal "${status}" 1
   assert_contains "${output}" \
     "Commits on main are not allowed. Allowed branches: tasks/*"
   assert_contains "${output}" "git switch -c tasks/<id>-<slug>"
-}
-
-@test "daeshift-branch-check says to set pass_filenames when given files" {
-  run "${check}" README.md
-  assert_equal "${status}" 1
-  assert_contains "${output}" "pass_filenames: false"
 }

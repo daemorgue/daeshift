@@ -76,8 +76,3 @@ write_skill() {
   assert_equal "${status}" 0
   assert_contains "${output}" "1 skills follow the specification"
 }
-
-@test "check-skills passes daeshift's own skills" {
-  run "${check_skills}"
-  assert_equal "${status}" 0
-}

@@ -4,7 +4,8 @@
 # task's status does not follow its subtasks (decision-3): In Progress
 # while any subtask is In Progress, Done when every subtask is Done, To
 # Do otherwise. Every parent must also carry the label "parent". Reads
-# the board with the backlog command in DAESHIFT_PROJECT_ROOT. Run
+# the board with the backlog command in DAESHIFT_PROJECT_ROOT, from the
+# working tree rather than the staged files. Run
 # "daeshift-parent-status --help" for usage.
 
 set -o nounset
@@ -54,6 +55,7 @@ check_dependencies() {
 }
 
 main() {
+  local line
   local problems
   local tasks
 
@@ -86,9 +88,9 @@ main() {
   if [[ -n "${problems}" ]]; then
     err "Parent tasks do not follow their subtasks. Fix them with" \
       "backlog task edit, then commit again:"
-    echo "${problems}" | while IFS= read -r line; do
+    while IFS= read -r line; do
       echo "    ${line}" >&2
-    done
+    done <<<"${problems}"
     exit 1
   fi
 }

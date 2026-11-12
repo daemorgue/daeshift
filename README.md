@@ -68,7 +68,7 @@ session in every project. So the root never holds `AGENTS.md`,
 There is no install script yet, so these steps are manual.
 
 1. Check the prerequisites: git 2.31 or later, bash, python3 3.11 or
-   later, node, tmux, curl and [pi].
+   later, node, jq, tmux, curl and [pi].
 
 2. Clone daeshift to `~/.daeshift`. Everything that belongs to your
    machine goes in `~/.daeshift/local/`, which git ignores:

@@ -29,8 +29,9 @@ setup() {
   mkdir -p "${HOME}/bin" "${DAESHIFT_PROJECT_ROOT}"
   # The stand-in's line must reach its file unexpanded.
   # shellcheck disable=SC2016
-  printf '%s\n' '#!/usr/bin/env bash' 'cat "${HOME}/board.json"' \
-    > "${HOME}/bin/backlog"
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'echo "$* in ${PWD}" > "${HOME}/backlog-call"' \
+    'cat "${HOME}/board.json"' > "${HOME}/bin/backlog"
   chmod +x "${HOME}/bin/backlog"
   export PATH="${HOME}/bin:${PATH}"
   check="${BATS_TEST_DIRNAME}/../git/hooks/checks/daeshift-parent-status"
@@ -40,8 +41,11 @@ setup() {
   cat > "${HOME}/board.json" <<'JSON'
 {"tasks": [
   {"id": "TASK-1", "status": "In Progress", "labels": ["parent"]},
-  {"id": "TASK-1.1", "parentTaskId": "TASK-1", "status": "In Progress"},
+  {"id": "TASK-1.1", "parentTaskId": "TASK-1", "status": "In Progress",
+   "labels": ["parent"]},
+  {"id": "TASK-1.1.1", "parentTaskId": "TASK-1.1", "status": "In Progress"},
   {"id": "TASK-1.2", "parentTaskId": "TASK-1", "status": "To Do"},
+  {"id": "TASK-9.1", "parentTaskId": "TASK-9", "status": "To Do"},
   {"id": "TASK-2", "status": "Done", "labels": ["parent"]},
   {"id": "TASK-2.1", "parentTaskId": "TASK-2", "status": "Done"},
   {"id": "TASK-3", "status": "To Do", "labels": ["parent"]},
@@ -52,6 +56,8 @@ JSON
   run "${check}"
   assert_equal "${status}" 0
   assert_equal "${output}" ""
+  assert_equal "$(cat "${HOME}/backlog-call")" \
+    "task list --json in ${DAESHIFT_PROJECT_ROOT}"
 }
 
 @test "daeshift-parent-status rejects a parent without the parent label" {
@@ -80,4 +86,11 @@ JSON
   assert_contains "${output}" \
     "TASK-1 is To Do; its subtasks make it In Progress"
   assert_contains "${output}" "TASK-2 is In Progress; its subtasks make it Done"
+}
+
+@test "daeshift-parent-status says to run it through the hooks" {
+  unset DAESHIFT_PROJECT_ROOT
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Run this check through daeshift's git hooks"
 }

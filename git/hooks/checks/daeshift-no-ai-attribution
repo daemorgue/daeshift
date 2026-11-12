@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+# daeshift-no-ai-attribution: reject a commit message that credits
+# anyone besides its author. pre-commit runs it at the commit-msg stage
+# with the message file. Run "daeshift-no-ai-attribution --help" for
+# usage.
+
+set -o nounset
+set -o pipefail
+
+# Trailers that credit a co-author or a tool. Every one is rejected,
+# whatever it names: people are credited on GitHub, whose squash merges
+# add their own trailers.
+readonly CREDIT_TRAILERS='^[[:space:]]*(amp-thread-id|assisted-by|'\
+'co-authored-by|generated-by|made-with)[[:space:]]*:'
+# Claude Code's "Generated with" footer, known by its link.
+readonly FOOTER='generated with.*claude\.(ai/code|com/claude-code)'
+# git's scissors line, after its comment marker. git hands commit-msg
+# the diff below it when committing with --verbose.
+readonly SCISSORS='^[^[:alnum:][:space:]]+ -+ >8 -+$'
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Prints each line of message file $1 that credits someone, as
+# "    line <number>: <line>". Stops at git's scissors line. git's own
+# comment lines never match.
+find_credit() {
+  local line
+  local number=0
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    number=$((number + 1))
+    if [[ "${line}" =~ ${SCISSORS} ]]; then
+      break
+    fi
+    if [[ "${line}" =~ ${CREDIT_TRAILERS} || "${line}" =~ ${FOOTER} ]]; then
+      echo "    line ${number}: ${line}"
+    fi
+  done < "$1"
+}
+
+main() {
+  local found
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+
+  shopt -s nocasematch
+  found="$(find_credit "$1")" || exit 1
+  if [[ -n "${found}" ]]; then
+    err "Commit messages credit no one but their author. Remove these" \
+      "lines, then commit again:"
+    echo "${found}" >&2
+    exit 1
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: daeshift-no-ai-attribution [OPTIONS] MESSAGE_FILE
+
+DESCRIPTION
+    Reject a commit message with a Co-Authored-By, Assisted-by,
+    Generated-by, Made-with or Amp-Thread-ID trailer, or the link of
+    Claude Code's "Generated with" footer.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

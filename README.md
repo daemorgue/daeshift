@@ -138,6 +138,30 @@ Hooks can read `DAESHIFT_PROJECT_ROOT` (the project folder) and
 `DAESHIFT_REPO_KIND` (`project` for the project repo, `code` for a code
 repo).
 
+daeshift ships its own checks in `git/hooks/checks/`. The hook puts
+that folder on `PATH`, so a config names a check by its command alone,
+as a local hook:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: no-ai-attribution
+        name: no AI attribution
+        entry: daeshift-no-ai-attribution
+        language: unsupported
+        stages: [commit-msg]
+```
+
+| Check | Stage | What it does |
+|-------|-------|--------------|
+| `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit message that credits anyone besides its author: any `Co-Authored-By`, `Assisted-by`, `Generated-by`, `Made-with` or `Amp-Thread-ID` trailer, whatever it names, and Claude Code's "Generated with" footer. Credit people on GitHub instead, where squash merges add their own trailers; amending such a commit on this machine is rejected too. |
+
+The checks only run through daeshift's hook; `pre-commit run` on its
+own cannot find them. A config that names a check the installed
+release lacks fails every commit, so turn a new check on only after
+installing the release that has it.
+
 A repo's own hooks in `.git/hooks/` still run, for the hooks git calls
 on a working clone: applypatch-msg, commit-msg, post-applypatch,
 post-checkout, post-commit, post-merge, post-rewrite, pre-applypatch,

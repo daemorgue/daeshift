@@ -164,19 +164,24 @@ run_own_hook() {
 
 # Runs pre-commit with config file $1 for hook $2 (pre-commit,
 # pre-merge-commit or commit-msg). For commit-msg, $3 is the commit
-# message file. Fails when any hook fails.
+# message file. daeshift's own checks, in the checks folder beside this
+# script, are put on PATH so a config names them by command alone.
+# Fails when any hook fails.
 run_pre_commit() {
+  # git runs hooks by their absolute path, so $0's folder is this one.
+  local checks_dir="${0%/*}/checks"
   local config="$1"
   local hook_name="$2"
   local pre_commit
 
   pre_commit="$(find_pre_commit)" || return 1
   if [[ "${hook_name}" == "commit-msg" ]]; then
-    "${pre_commit}" run --config "${config}" --hook-stage commit-msg \
-      --commit-msg-filename "$3"
+    PATH="${checks_dir}:${PATH}" "${pre_commit}" run --config "${config}" \
+      --hook-stage commit-msg --commit-msg-filename "$3"
   else
     # pre-commit, or pre-merge-commit for a merge without conflicts.
-    "${pre_commit}" run --config "${config}" --hook-stage "${hook_name}"
+    PATH="${checks_dir}:${PATH}" "${pre_commit}" run --config "${config}" \
+      --hook-stage "${hook_name}"
   fi
 }
 

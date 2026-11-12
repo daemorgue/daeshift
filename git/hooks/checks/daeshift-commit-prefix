@@ -14,8 +14,9 @@ readonly BOARD_SUBJECT='^Board: [^ ]'
 readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
 # Markers a rebase folds away; the subject after them is checked.
 readonly REBASE_MARKER='^(fixup|squash|amend)! '
-# git revert's subject; the reverted subject inside is checked.
-readonly REVERT_SUBJECT='^Revert "(.*)"$'
+# git revert's subjects, Revert "..." and (since git 2.43) Reapply
+# "..."; the subject inside is checked, unwrapped as often as needed.
+readonly REVERT_SUBJECT='^(Revert|Reapply) "(.*)"$'
 # A subject naming a task: TASK-<n>[.<m>...]: , a space, then text.
 readonly TASK_SUBJECT='^TASK-([0-9]+(\.[0-9]+)*): [^ ]'
 
@@ -158,9 +159,9 @@ main() {
   while [[ "${subject}" =~ ${REBASE_MARKER} ]]; do
     subject="${subject#*! }"
   done
-  if [[ "${subject}" =~ ${REVERT_SUBJECT} ]]; then
-    subject="${BASH_REMATCH[1]}"
-  fi
+  while [[ "${subject}" =~ ${REVERT_SUBJECT} ]]; do
+    subject="${BASH_REMATCH[2]}"
+  done
   if [[ "${allow_board}" == "true" && "${subject}" =~ ${BOARD_SUBJECT} ]]
   then
     exit 0
@@ -206,7 +207,7 @@ Usage: daeshift-commit-prefix [OPTIONS] MESSAGE_FILE
 DESCRIPTION
     Reject a commit whose subject does not start with TASK-<id>: and
     text. The subject after fixup!, squash! or amend!, and inside git
-    revert's Revert "...", is checked the same way. Merge commits and a
+    revert's Revert "..." or Reapply "...", is checked the same way. Merge commits and a
     new repo's first commit are exempt.
 
 OPTIONS

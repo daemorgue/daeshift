@@ -80,7 +80,7 @@ setup() {
   echo "fixup! TASK-7.2: Fix it" > "${message}"
   run "${check}" --match-branch "${message}"
   assert_equal "${status}" 0
-  echo 'Revert "TASK-7.2: Fix it"' > "${message}"
+  echo 'Reapply "TASK-7.2: Fix it"' > "${message}"
   run "${check}" --match-branch "${message}"
   assert_equal "${status}" 0
   echo "fixup! anything" > "${message}"

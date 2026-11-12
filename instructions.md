@@ -1,8 +1,15 @@
 # daeshift instructions
 
 These instructions reach every agent session that daeshift starts. The
-project's own AGENTS.md adds where things live and what to do at the
-start of a session.
+project's own AGENTS.md says where things live and holds its next-task
+command.
+
+## Cold start
+
+Before the first answer, read every task In Progress on the project
+board with all its notes (`backlog task view <id> --plain`), then run
+the project's next-task command. Assume no earlier conversation. Then
+report each task In Progress and where it stands, and the next task.
 
 ## How to work
 
@@ -34,9 +41,16 @@ start of a session.
   If code and page disagree, report it and open a task; neither changes
   until that task decides which one is wrong.
 - **Sessions are disposable.** Anything worth keeping goes on the board,
-  in the wiki or in git before the session ends (/closeout). Commit
-  and push the project repository after each set of changes to its
-  board, wiki or maps.
+  in the wiki or in git as it happens. Append a note to the task at
+  every step change, including any question still open, so a session
+  that ends suddenly loses nothing.
+  Commit and push the project repository after each set of changes to
+  its board, wiki or maps.
+- **Every commit names its task.** A commit made inside a task starts
+  with `TASK-<id>:`, in the project repository and in code
+  repositories, and so does a pull request's title. Board work outside
+  a task starts with `Board:`. Report any other commit to the developer
+  as unlinked work when you see it.
 
 ## How to write to the developer
 
@@ -47,8 +61,7 @@ Present one task per message. When several tasks need the developer (an
 approval, a plan, a task to close, a question), take them one at a
 time: the current task first, then by priority with board order
 breaking ties. Present the next only after the developer has answered.
-A start-of-session, status or closeout report may list several tasks,
-but asks about one.
+The cold-start report may list several tasks, but asks about one.
 
 - **First line, bold:** `TASK-<id> · <title>` of the task being worked.
   With no task yet (the start of a session, or board work), write

@@ -48,12 +48,6 @@ setup() {
   git commit --quiet --allow-empty --message "TASK-7.2: First"
 }
 
-@test "daeshift-commit-prefix allows a fixup commit" {
-  echo "fixup! TASK-7.2: Fix it" > "${message}"
-  run "${check}" --match-branch "${message}"
-  assert_equal "${status}" 0
-}
-
 @test "daeshift-commit-prefix allows a merge commit" {
   touch "$(git rev-parse --git-path MERGE_HEAD)"
   echo "Merge branch 'main'" > "${message}"
@@ -82,6 +76,18 @@ setup() {
   assert_equal "${status}" 0
 }
 
+@test "daeshift-commit-prefix checks the subject after fixup! and in a revert" {
+  echo "fixup! TASK-7.2: Fix it" > "${message}"
+  run "${check}" --match-branch "${message}"
+  assert_equal "${status}" 0
+  echo 'Revert "TASK-7.2: Fix it"' > "${message}"
+  run "${check}" --match-branch "${message}"
+  assert_equal "${status}" 0
+  echo "fixup! anything" > "${message}"
+  run "${check}" --match-branch "${message}"
+  assert_equal "${status}" 1
+}
+
 @test "daeshift-commit-prefix fails closed when the board cannot be read" {
   touch "${HOME}/board-fails"
   echo "TASK-7.2: Fix it" > "${message}"
@@ -96,6 +102,15 @@ setup() {
   assert_equal "${status}" 1
   assert_contains "${output}" \
     "The subject must start with TASK-<id>: or Board:, not: TASK-7.2 done"
+}
+
+@test "daeshift-commit-prefix rejects a task ID with no text after it" {
+  echo "TASK-7.2:x" > "${message}"
+  run "${check}" "${message}"
+  assert_equal "${status}" 1
+  echo "TASK-7.2: " > "${message}"
+  run "${check}" "${message}"
+  assert_equal "${status}" 1
 }
 
 @test "daeshift-commit-prefix rejects a task not on the board" {
@@ -117,4 +132,16 @@ setup() {
   echo "Board: draft a task" > "${message}"
   run "${check}" --match-branch "${message}"
   assert_equal "${status}" 1
+  assert_contains "${output}" "must start with TASK-<id>:, not: Board:"
+}
+
+@test "daeshift-commit-prefix uses the rebased branch during a rebase" {
+  git checkout --quiet --detach
+  mkdir "$(git rev-parse --git-path rebase-merge)"
+  echo "refs/heads/tasks/task-7.2-fix-it" \
+    > "$(git rev-parse --git-path rebase-merge/head-name)"
+  echo "TASK-7.3: Fix it" > "${message}"
+  run "${check}" --match-branch "${message}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "branch tasks/task-7.2-fix-it is for TASK-7.2"
 }

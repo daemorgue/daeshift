@@ -9,18 +9,19 @@ set -o nounset
 set -o pipefail
 
 # A subject naming board work outside any task.
-readonly BOARD_SUBJECT='^Board:( |$)'
+readonly BOARD_SUBJECT='^Board: [^ ]'
 # The task part of a branch name: tasks/task-<n>[.<m>...][-<slug>].
 readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
-# Subjects git or a rebase writes itself, folded away or kept as is.
-readonly EXEMPT_SUBJECT='^(fixup|squash|amend)! '
-# A subject naming a task: TASK-<n>[.<m>...]: followed by a space or the
-# end.
-readonly TASK_SUBJECT='^TASK-([0-9]+(\.[0-9]+)*):( |$)'
+# Markers a rebase folds away; the subject after them is checked.
+readonly REBASE_MARKER='^(fixup|squash|amend)! '
+# git revert's subject; the reverted subject inside is checked.
+readonly REVERT_SUBJECT='^Revert "(.*)"$'
+# A subject naming a task: TASK-<n>[.<m>...]: , a space, then text.
+readonly TASK_SUBJECT='^TASK-([0-9]+(\.[0-9]+)*): [^ ]'
 
 # Every outside program the check runs. check_dependencies reports each
 # missing one before any work starts.
-dependencies=(git)
+dependencies=(cat git)
 allow_board="false"
 match_branch="false"
 on_board="false"
@@ -46,18 +47,40 @@ check_dependencies() {
   fi
 }
 
+# Prints the current branch, or during a rebase the branch being
+# rebased. Fails on a detached HEAD outside a rebase.
+find_branch() {
+  local head_name
+  local path
+
+  if git symbolic-ref --quiet --short HEAD; then
+    return 0
+  fi
+  for path in rebase-merge/head-name rebase-apply/head-name; do
+    head_name="$(git rev-parse --git-path "${path}")" || return 1
+    if [[ -f "${head_name}" ]]; then
+      head_name="$(cat "${head_name}")" || return 1
+      echo "${head_name#refs/heads/}"
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Prints the subject of message file $1: its first line that is not a
 # git comment.
 find_subject() {
   local comment_char
   local line
 
-  comment_char="$(git config core.commentChar)"
+  comment_char="$(git config core.commentString)" \
+    || comment_char="$(git config core.commentChar)"
   if [[ -z "${comment_char}" || "${comment_char}" == "auto" ]]; then
     comment_char="#"
   fi
   while IFS= read -r line || [[ -n "${line}" ]]; do
-    if [[ -n "${line}" && "${line}" != "${comment_char}"* ]]; then
+    if [[ "${line}" =~ [^[:space:]] && "${line}" != "${comment_char}"* ]]
+    then
       echo "${line}"
       return 0
     fi
@@ -132,8 +155,11 @@ main() {
     exit 0
   fi
   subject="$(find_subject "$1")" || exit 1
-  if [[ "${subject}" =~ ${EXEMPT_SUBJECT} ]]; then
-    exit 0
+  while [[ "${subject}" =~ ${REBASE_MARKER} ]]; do
+    subject="${subject#*! }"
+  done
+  if [[ "${subject}" =~ ${REVERT_SUBJECT} ]]; then
+    subject="${BASH_REMATCH[1]}"
   fi
   if [[ "${allow_board}" == "true" && "${subject}" =~ ${BOARD_SUBJECT} ]]
   then
@@ -150,7 +176,7 @@ main() {
   fi
   task_id="TASK-${BASH_REMATCH[1]}"
   if [[ "${match_branch}" == "true" ]] \
-    && branch="$(git symbolic-ref --quiet --short HEAD)" \
+    && branch="$(find_branch)" \
     && [[ "${branch}" =~ ${BRANCH_TASK} ]] \
     && [[ "TASK-${BASH_REMATCH[1]}" != "${task_id}" ]]; then
     err "The subject names ${task_id}, but branch ${branch} is for" \
@@ -178,9 +204,10 @@ usage() {
 Usage: daeshift-commit-prefix [OPTIONS] MESSAGE_FILE
 
 DESCRIPTION
-    Reject a commit whose subject does not start with TASK-<id>:.
-    Merge commits, fixup!, squash! and amend! commits, and a new repo's
-    first commit are exempt.
+    Reject a commit whose subject does not start with TASK-<id>: and
+    text. The subject after fixup!, squash! or amend!, and inside git
+    revert's Revert "...", is checked the same way. Merge commits and a
+    new repo's first commit are exempt.
 
 OPTIONS
         --allow-board    Also accept a subject starting with Board:

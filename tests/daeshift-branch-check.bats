@@ -71,18 +71,25 @@ setup() {
   assert_contains "${output}" "Denied branches: release/old"
 }
 
-@test "daeshift-branch-check matches / with ** but not with *" {
-  git switch --quiet --create feature/a/b
+@test "daeshift-branch-check matches folders like GitHub's rulesets" {
+  git switch --quiet --create feature/a/b1
   run "${check}" --allow 'feature/*'
   assert_equal "${status}" 1
-  run "${check}" --allow 'feature/**'
+  run "${check}" --allow 'feature/**/b?'
   assert_equal "${status}" 0
 }
 
-@test "daeshift-branch-check rejects a branch no --allow glob matches" {
-  git switch --quiet --create fix-typo
+@test "daeshift-branch-check rejects a branch a lone --deny glob matches" {
+  git switch --quiet --create release/old
+  run "${check}" --deny 'release/*'
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Denied branches: release/*"
+}
+
+@test "daeshift-branch-check rejects main, naming the allowed branches" {
   run "${check}" --allow 'tasks/*'
   assert_equal "${status}" 1
   assert_contains "${output}" \
-    "Commits on fix-typo are not allowed. Allowed branches: tasks/*"
+    "Commits on main are not allowed. Allowed branches: tasks/*"
+  assert_contains "${output}" "git switch -c tasks/<id>-<slug>"
 }

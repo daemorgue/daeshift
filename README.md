@@ -159,7 +159,7 @@ repos:
 
 | Check | Stage | What it does |
 |-------|-------|--------------|
-| `daeshift-branch-check` | `pre-commit`, `pre-merge-commit` | Rejects a commit on a branch matching a `--deny` glob, or matching no `--allow` glob when any is given; with neither, `main` and `master` are denied. `*` and `?` never match `/`, `**` does, as in GitHub's rulesets. A new repo's first commit and a detached HEAD pass. Give it `pass_filenames: false` and `always_run: true`. |
+| `daeshift-branch-check` | `pre-commit`, `pre-merge-commit` | Rejects a commit on a branch matching a `--deny` glob, or matching no `--allow` glob when any is given; with neither, `main` and `master` are denied. Globs match like GitHub's rulesets: `*` and `?` never match `/`, `**/` matches any folders; character classes are not supported. A new repo's first commit and a detached HEAD pass. When a `tasks/` branch would be allowed, the message suggests one. Give it `pass_filenames: false` and `always_run: true`. |
 | `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Add it to the project repo's `_project.yaml` like the example above, with `files: '^\.config/pre-commit/.*\.yaml$'` and no `stages`. |
 | `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit message that credits anyone besides its author: any `Co-Authored-By`, `Assisted-by`, `Generated-by`, `Made-with` or `Amp-Thread-ID` trailer, whatever it names, and Claude Code's "Generated with" footer. Credit people on GitHub instead, where squash merges add their own trailers; amending such a commit on this machine is rejected too. |
 

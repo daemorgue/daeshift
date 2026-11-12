@@ -35,9 +35,22 @@ check_dependencies() {
   fi
 }
 
+# Prints why branch $1 is not allowed ("Denied branches: ..." or
+# "Allowed branches: ..."), and prints nothing when it is allowed.
+find_reason() {
+  if [[ "${#deny[@]}" -gt 0 ]] && matches_any "$1" "${deny[@]}"; then
+    echo "Denied branches: ${deny[*]}"
+  elif [[ "${#allow[@]}" -gt 0 ]] && ! matches_any "$1" "${allow[@]}"
+  then
+    echo "Allowed branches: ${allow[*]}"
+  fi
+}
+
 # Prints glob $1 as an anchored extended regular expression, matching
-# the way GitHub's rulesets do: "*" and "?" never match "/", and "**"
-# matches across it.
+# the way GitHub's rulesets do (fnmatch with FNM_PATHNAME): "*" and "?"
+# never match "/", "**/" matches zero or more whole folders, a "**" not
+# followed by "/" acts as "*". Character classes ("[0-9]") are not
+# supported: "[" and "]" match themselves.
 glob_to_regex() {
   local char
   local glob="$1"
@@ -46,17 +59,24 @@ glob_to_regex() {
 
   while [[ "${index}" -lt "${#glob}" ]]; do
     char="${glob:${index}:1}"
+    if [[ "${glob:${index}:3}" == "**/" ]]; then
+      regex="${regex}(.*/)?"
+      index=$((index + 3))
+      continue
+    fi
     if [[ "${glob:${index}:2}" == "**" ]]; then
-      regex="${regex}.*"
+      regex="${regex}[^/]*"
       index=$((index + 2))
       continue
     fi
     case "${char}" in
       "*") regex="${regex}[^/]*" ;;
       "?") regex="${regex}[^/]" ;;
-      "."|"^"|"$"|"+"|"("|")"|"["|"]"|"{"|"}"|"|"|"\\")
-        regex="${regex}\\${char}"
-        ;;
+      # A one-character bracket expression matches the character itself
+      # in every POSIX regex engine. git forbids "^", "[" and "\" in
+      # branch names, so a glob holding them matches nothing.
+      "."|"$"|"+"|"("|")"|"]"|"{"|"}"|"|") regex="${regex}[${char}]" ;;
+      "^"|"["|"\\") regex="${regex}\\${char}" ;;
       *) regex="${regex}${char}" ;;
     esac
     index=$((index + 1))
@@ -91,7 +111,12 @@ main() {
       "-h"|"--help") usage 0 ;;
       # The check prints only problems, so -q has nothing to hide.
       "-q"|"--quiet") ;;
-      *) usage 1 >&2 ;;
+      "-"*) usage 1 >&2 ;;
+      *)
+        err "daeshift-branch-check takes no files. Give its hook" \
+          "pass_filenames: false."
+        exit 1
+        ;;
     esac
     shift
   done
@@ -109,22 +134,13 @@ main() {
   if ! git rev-parse --quiet --verify HEAD >/dev/null; then
     exit 0
   fi
-  reason=""
-  if [[ "${#deny[@]}" -gt 0 ]] && matches_any "${branch}" "${deny[@]}"
-  then
-    reason="Denied branches: ${deny[*]}"
-  elif [[ "${#allow[@]}" -gt 0 ]] && ! matches_any "${branch}" "${allow[@]}"
-  then
-    reason="Allowed branches: ${allow[*]}"
-  fi
+  reason="$(find_reason "${branch}")"
   if [[ -z "${reason}" ]]; then
     exit 0
   fi
-  if [[ "${branch}" == "main" || "${branch}" == "master" ]]; then
-    err "Commits on ${branch} are not allowed in a code repo. Create a" \
-      "task branch first: git switch -c tasks/<id>-<slug>"
-  else
-    err "Commits on ${branch} are not allowed. ${reason}"
+  err "Commits on ${branch} are not allowed. ${reason}"
+  if [[ -z "$(find_reason "tasks/task-1-example")" ]]; then
+    err "Create a task branch first: git switch -c tasks/<id>-<slug>"
   fi
   exit 1
 }
@@ -153,7 +169,8 @@ Usage: daeshift-branch-check [OPTIONS]
 DESCRIPTION
     Reject a commit on a branch matching a --deny glob, or matching no
     --allow glob when any is given. With neither, main and master are
-    denied. In a glob, * and ? never match /, and ** matches across it.
+    denied. In a glob, * and ? never match /, **/ matches any folders,
+    as in GitHub's rulesets; character classes are not supported.
     A detached HEAD and a new repo's first commit are always allowed.
 
 OPTIONS

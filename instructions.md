@@ -6,10 +6,10 @@ command.
 
 ## Cold start
 
-Before the first answer, read every task In Progress on the project
-board with all its notes (`backlog task view <id> --plain`), then run
-the project's next-task command. Assume no earlier conversation. Then
-report each task In Progress and where it stands, and the next task.
+Before the first answer, run the project's next-task command, then
+read every task In Progress it lists with all its notes (`backlog task
+view <id> --plain`). Assume no earlier conversation. Then report each
+task In Progress and where it stands, and the next task.
 
 ## How to work
 

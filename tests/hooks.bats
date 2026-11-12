@@ -78,6 +78,19 @@ setup() {
   assert_equal "$(ls "${HOME}/pre-commit-calls" 2>/dev/null)" ""
 }
 
+@test "hooks pass a clean commit through daeshift's check" {
+  if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
+    skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"
+  fi
+  ln -sf "${DAESHIFT_TEST_PRE_COMMIT}" "${stub}"
+  printf '%s\n' 'repos:' '- repo: local' '  hooks:' \
+    '  - id: no-ai-attribution' '    name: no AI attribution' \
+    '    entry: daeshift-no-ai-attribution' '    language: unsupported' \
+    '    stages: [commit-msg]' > "${project}/.config/pre-commit/code.yaml"
+  commit_in "${code}"
+  assert_equal "$(git -C "${code}" rev-list --all | wc -l | tr -d ' ')" 1
+}
+
 @test "hooks reject AI credit with daeshift's check, named by command" {
   if [[ -z "${DAESHIFT_TEST_PRE_COMMIT:-}" ]]; then
     skip "DAESHIFT_TEST_PRE_COMMIT does not name the pinned pre-commit"

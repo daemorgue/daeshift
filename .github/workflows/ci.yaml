@@ -48,7 +48,7 @@ jobs:
         # bats still fails the step through tee.
         shell: bash
         run: |
-          bats tests | tee "${RUNNER_TEMP}/bats.out"
+          bats --formatter tap tests | tee "${RUNNER_TEMP}/bats.out"
           if grep --quiet "# skip" "${RUNNER_TEMP}/bats.out"; then
             echo "A test was skipped; CI must run every test." >&2
             exit 1

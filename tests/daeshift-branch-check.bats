@@ -77,6 +77,11 @@ setup() {
   assert_equal "${status}" 1
   run "${check}" --allow 'feature/**/b?'
   assert_equal "${status}" 0
+  git switch --quiet --create feature/b1
+  run "${check}" --allow 'feature/**/b?'
+  assert_equal "${status}" 0
+  run "${check}" --allow 'feature/**'
+  assert_equal "${status}" 0
 }
 
 @test "daeshift-branch-check rejects a branch a lone --deny glob matches" {
@@ -92,4 +97,10 @@ setup() {
   assert_contains "${output}" \
     "Commits on main are not allowed. Allowed branches: tasks/*"
   assert_contains "${output}" "git switch -c tasks/<id>-<slug>"
+}
+
+@test "daeshift-branch-check says to set pass_filenames when given files" {
+  run "${check}" README.md
+  assert_equal "${status}" 1
+  assert_contains "${output}" "pass_filenames: false"
 }

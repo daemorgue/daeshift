@@ -59,7 +59,9 @@ glob_to_regex() {
 
   while [[ "${index}" -lt "${#glob}" ]]; do
     char="${glob:${index}:1}"
-    if [[ "${glob:${index}:3}" == "**/" ]]; then
+    # "**/" is special only at the start of a folder name.
+    if [[ "${glob:${index}:3}" == "**/" ]] \
+      && [[ "${index}" -eq 0 || "${glob:$((index - 1)):1}" == "/" ]]; then
       regex="${regex}(.*/)?"
       index=$((index + 3))
       continue

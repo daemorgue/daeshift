@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+
+# daeshift-parent-status: reject a project repo commit while a parent
+# task's status does not follow its subtasks (decision-3): In Progress
+# while any subtask is In Progress, Done when every subtask is Done, To
+# Do otherwise. Every parent must also carry the label "parent". Reads
+# the board with the backlog command in DAESHIFT_PROJECT_ROOT. Run
+# "daeshift-parent-status --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# For each parent, prints "<id>: <problem>" when its status or label is
+# wrong, reading backlog's JSON task list. The $ names are jq's.
+# shellcheck disable=SC2016
+readonly FIND_PROBLEMS='
+  .tasks as $all
+  | ([$all[] | .parentTaskId // empty] | unique)[] as $id
+  | ([$all[] | select(.id == $id)][0]) as $parent
+  | select($parent != null)
+  | [$all[] | select(.parentTaskId == $id) | .status] as $statuses
+  | (if ($statuses | index("In Progress")) then "In Progress"
+     elif ($statuses | all(. == "Done")) then "Done"
+     else "To Do" end) as $wanted
+  | (if $parent.status != $wanted then
+       "\($id) is \($parent.status); its subtasks make it \($wanted)"
+     else empty end),
+    (if ($parent.labels // [] | index("parent")) then empty
+     else "\($id) has subtasks but no \"parent\" label" end)'
+
+# Every outside program the check runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(backlog jq)
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it, then try again."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  local problems
+  local tasks
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      # The check prints only problems, so -q has nothing to hide.
+      "-q"|"--quiet") ;;
+      "-"*) usage 1 >&2 ;;
+      # pre-commit may pass the changed board files; the check reads
+      # the whole board instead.
+      *) ;;
+    esac
+    shift
+  done
+
+  if [[ -z "${DAESHIFT_PROJECT_ROOT:-}" ]]; then
+    err "DAESHIFT_PROJECT_ROOT is not set. Run this check through" \
+      "daeshift's git hooks, which set it."
+    exit 1
+  fi
+  check_dependencies || exit 1
+  tasks="$(cd "${DAESHIFT_PROJECT_ROOT}" && backlog task list --json)" \
+    || exit 1
+  problems="$(jq -r "${FIND_PROBLEMS}" <<<"${tasks}")" || exit 1
+  if [[ -n "${problems}" ]]; then
+    err "Parent tasks do not follow their subtasks. Fix them with" \
+      "backlog task edit, then commit again:"
+    echo "${problems}" | while IFS= read -r line; do
+      echo "    ${line}" >&2
+    done
+    exit 1
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'USAGE'
+Usage: daeshift-parent-status [OPTIONS]
+
+DESCRIPTION
+    Reject a commit while a parent task's status does not follow its
+    subtasks, or a parent lacks the label "parent". Run by daeshift's
+    git hooks in the project repo.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+USAGE
+  exit "$1"
+}
+
+main "$@"

@@ -155,6 +155,7 @@ repos:
 
 | Check | Stage | What it does |
 |-------|-------|--------------|
+| `daeshift-check-pre-commit-config` | `pre-commit` | Validates pre-commit config files with daeshift's pinned pre-commit. Add it to the project repo's `_project.yaml` like the example above, with `files: '^\.config/pre-commit/.*\.yaml$'` and no `stages`. |
 | `daeshift-no-ai-attribution` | `commit-msg` | Rejects a commit message that credits anyone besides its author: any `Co-Authored-By`, `Assisted-by`, `Generated-by`, `Made-with` or `Amp-Thread-ID` trailer, whatever it names, and Claude Code's "Generated with" footer. Credit people on GitHub instead, where squash merges add their own trailers; amending such a commit on this machine is rejected too. |
 
 The checks only run through daeshift's hook; `pre-commit run` on its

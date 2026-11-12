@@ -263,4 +263,5 @@ setup() {
   commit_in "${project}/wt"
   assert_contains "$(cat "${HOME}/pre-commit-calls")" \
     "--config ${project}/.config/pre-commit/code.yaml"
+  assert_contains "$(cat "${HOME}/pre-commit-calls")" "name=code"
 }

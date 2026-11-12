@@ -13,19 +13,28 @@ set -o pipefail
 
 # The task part of a branch name: tasks/task-<n>[.<m>...][-<slug>].
 readonly BRANCH_TASK='^tasks/task-([0-9]+(\.[0-9]+)*)(-|$)'
-# Prints one line about task $id: "missing", or its status, its number
-# of acceptance criteria, its project, whether it has subtasks and
-# whether it is ready, separated by tabs. The $ names are jq's.
+# Prints every reason task $id cannot be worked in repo $repo, one per
+# line, and nothing when it can. Dependencies are judged by backlog's
+# isReady, since its task list carries no dependency list. The $ names
+# are jq's.
 # shellcheck disable=SC2016
-readonly READ_TASK='
+readonly FIND_REASONS='
   .tasks as $all
   | ([$all[] | select(.id == $id)][0]) as $task
-  | if $task == null then "missing"
-    else [$task.status, ($task.acceptanceCriteriaCount // 0 | tostring),
-          ($task.project // ""),
-          ([$all[] | select(.parentTaskId == $id)] | length > 0
-           | tostring),
-          ($task.isReady // false | tostring)] | join("\t")
+  | if $task == null then "\($id) is not on the board."
+    else
+      (if $task.status != "In Progress"
+       then "\($id) is \($task.status), not In Progress." else empty end),
+      (if ($task.acceptanceCriteriaCount // 0) == 0
+       then "\($id) has no acceptance criteria." else empty end),
+      (if ($task.project // "") != $repo
+       then "\($id) belongs to project \"\($task.project // "")\","
+         + " not \"\($repo)\"."
+       else empty end),
+      (if any($all[]; .parentTaskId == $id)
+       then "\($id) has subtasks; work one of them instead." else empty end),
+      (if ($task.isReady // false) | not
+       then "\($id) waits on a dependency that is not Done." else empty end)
     end'
 
 # Every outside program the check runs. check_dependencies reports each
@@ -53,42 +62,22 @@ check_dependencies() {
   fi
 }
 
-# Prints every reason task $1, described by line $2 from READ_TASK,
-# cannot be worked in repo $3, one per line.
-find_reasons() {
-  local children
-  local criteria
-  local project
-  local ready
-  local status
+# Answers whether a rebase or a bisect is under way in this repo.
+in_rebase_or_bisect() {
+  local path
 
-  if [[ "$2" == "missing" ]]; then
-    echo "$1 is not on the board."
-    return 0
-  fi
-  IFS=$'\t' read -r status criteria project children ready <<<"$2"
-  if [[ "${status}" != "In Progress" ]]; then
-    echo "$1 is ${status}, not In Progress."
-  fi
-  if [[ "${criteria}" == "0" ]]; then
-    echo "$1 has no acceptance criteria."
-  fi
-  if [[ "${project}" != "$3" ]]; then
-    echo "$1 belongs to project '${project}', not '$3'."
-  fi
-  if [[ "${children}" == "true" ]]; then
-    echo "$1 has subtasks; work one of them instead."
-  fi
-  if [[ "${ready}" != "true" ]]; then
-    echo "$1 waits on a dependency that is not Done."
-  fi
+  for path in rebase-merge rebase-apply BISECT_LOG; do
+    if [[ -e "$(git rev-parse --git-path "${path}")" ]]; then
+      return 0
+    fi
+  done
+  return 1
 }
 
 main() {
   local branch
   local line
   local reasons
-  local task
   local task_id
 
   while [[ $# -gt 0 ]]; do
@@ -117,13 +106,20 @@ main() {
     exit 1
   fi
   check_dependencies || exit 1
-  # A detached HEAD (rebase, bisect) is on no branch.
-  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+  git rev-parse --git-dir >/dev/null || exit 1
+  # A new repo's first commit, before any branch or tag exists.
+  if [[ -z "$(git for-each-ref --count=1)" ]]; then
     exit 0
   fi
-  # A new repo's first commit has to land before any task branch exists.
-  if ! git rev-parse --quiet --verify HEAD >/dev/null; then
-    exit 0
+  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+    # A rebase or bisect runs on a detached HEAD; other commits there
+    # name no task.
+    if in_rebase_or_bisect; then
+      exit 0
+    fi
+    err "Commits on a detached HEAD name no task. Switch to a branch" \
+      "named tasks/task-<id>-<slug> for a task In Progress."
+    exit 1
   fi
   if [[ ! "${branch}" =~ ${BRANCH_TASK} ]]; then
     err "Branch ${branch} names no task. Work on a branch named" \
@@ -131,12 +127,11 @@ main() {
     exit 1
   fi
   task_id="TASK-${BASH_REMATCH[1]}"
-  if ! task="$(read_task "${task_id}")"; then
+  if ! reasons="$(read_reasons "${task_id}")"; then
     err "The board in ${DAESHIFT_PROJECT_ROOT} could not be read, so" \
       "${task_id} cannot be checked."
     exit 1
   fi
-  reasons="$(find_reasons "${task_id}" "${task}" "${DAESHIFT_REPO_NAME}")"
   if [[ -n "${reasons}" ]]; then
     err "Branch ${branch} is not ready for commits:"
     while IFS= read -r line; do
@@ -146,14 +141,15 @@ main() {
   fi
 }
 
-# Prints the READ_TASK line for task $1 from the project's board. Fails
-# when the board cannot be read.
-read_task() {
+# Prints FIND_REASONS for task $1 in this repo, from the project's
+# board. Fails when the board cannot be read.
+read_reasons() {
   local tasks
 
   tasks="$(cd "${DAESHIFT_PROJECT_ROOT}" && backlog task list --json)" \
     || return 1
-  jq -r --arg id "$1" "${READ_TASK}" <<<"${tasks}" || return 1
+  jq -r --arg id "$1" --arg repo "${DAESHIFT_REPO_NAME}" \
+    "${FIND_REASONS}" <<<"${tasks}" || return 1
 }
 
 # Prints the help text, then exits with the code it is given.

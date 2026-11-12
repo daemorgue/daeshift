@@ -47,8 +47,9 @@ setup() {
   git commit --quiet --allow-empty --message "First"
 }
 
-@test "daeshift-task-check allows a detached HEAD" {
+@test "daeshift-task-check allows a detached HEAD during a rebase" {
   git checkout --quiet --detach
+  mkdir "$(git rev-parse --git-path rebase-merge)"
   run "${check}"
   assert_equal "${status}" 0
 }
@@ -71,11 +72,34 @@ JSON
     "task list --json in ${DAESHIFT_PROJECT_ROOT}"
 }
 
+@test "daeshift-task-check fails closed when backlog or jq is missing" {
+  mkdir "${HOME}/only-git"
+  ln -s "$(command -v git)" "${HOME}/only-git/git"
+  ln -s "$(command -v bash)" "${HOME}/only-git/bash"
+  PATH="${HOME}/only-git" run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "jq was not found"
+}
+
 @test "daeshift-task-check fails closed when the board cannot be read" {
   touch "${HOME}/board-fails"
   run "${check}"
   assert_equal "${status}" 1
   assert_contains "${output}" "could not be read"
+}
+
+@test "daeshift-task-check matches the branch's task ID exactly" {
+  echo '{"tasks": [{"id": "TASK-7.2.1", "status": "In Progress"}]}' \
+    > "${HOME}/board.json"
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "TASK-7.2 is not on the board."
+  git switch --quiet --create tasks/task-7.2x
+  run "${check}"
+  assert_contains "${output}" "names no task"
+  git switch --quiet --create tasks/task-7.2.-x
+  run "${check}"
+  assert_contains "${output}" "names no task"
 }
 
 @test "daeshift-task-check names every reason a task is not ready" {
@@ -90,7 +114,7 @@ JSON
   assert_contains "${output}" "TASK-7.2 is To Do, not In Progress."
   assert_contains "${output}" "TASK-7.2 has no acceptance criteria."
   assert_contains "${output}" \
-    "TASK-7.2 belongs to project '_project', not 'daeshift'."
+    'TASK-7.2 belongs to project "_project", not "daeshift".'
   assert_contains "${output}" "TASK-7.2 has subtasks"
   assert_contains "${output}" "TASK-7.2 waits on a dependency"
 }
@@ -102,9 +126,23 @@ JSON
   assert_contains "${output}" "Branch fix-it names no task."
 }
 
+@test "daeshift-task-check rejects a commit on a detached HEAD" {
+  git checkout --quiet --detach
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Commits on a detached HEAD name no task."
+}
+
 @test "daeshift-task-check rejects a task that is not on the board" {
   echo '{"tasks": []}' > "${HOME}/board.json"
   run "${check}"
   assert_equal "${status}" 1
   assert_contains "${output}" "TASK-7.2 is not on the board."
+}
+
+@test "daeshift-task-check rejects an orphan branch in a repo with history" {
+  git checkout --quiet --orphan anything
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Branch anything names no task."
 }

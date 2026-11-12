@@ -41,8 +41,9 @@ setup() {
   assert_equal "${status}" 0
 }
 
-@test "daeshift-branch-check allows a detached HEAD" {
+@test "daeshift-branch-check allows a detached HEAD during a bisect" {
   git checkout --quiet --detach
+  touch "$(git rev-parse --git-path BISECT_LOG)"
   run "${check}"
   assert_equal "${status}" 0
 }
@@ -89,6 +90,13 @@ setup() {
   run "${check}" --deny 'release/*'
   assert_equal "${status}" 1
   assert_contains "${output}" "Denied branches: release/*"
+}
+
+@test "daeshift-branch-check rejects a commit on a detached HEAD" {
+  git checkout --quiet --detach
+  run "${check}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Commits on a detached HEAD are not allowed."
 }
 
 @test "daeshift-branch-check rejects main, naming the allowed branches" {

@@ -86,6 +86,18 @@ glob_to_regex() {
   echo "${regex}\$"
 }
 
+# Answers whether a rebase or a bisect is under way in this repo.
+in_rebase_or_bisect() {
+  local path
+
+  for path in rebase-merge rebase-apply BISECT_LOG; do
+    if [[ -e "$(git rev-parse --git-path "${path}")" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 main() {
   local branch
   local reason
@@ -128,13 +140,20 @@ main() {
   fi
 
   check_dependencies || exit 1
-  # A detached HEAD (rebase, bisect) is on no branch.
-  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+  git rev-parse --git-dir >/dev/null || exit 1
+  # A new repo's first commit, before any branch or tag exists.
+  if [[ -z "$(git for-each-ref --count=1)" ]]; then
     exit 0
   fi
-  # A new repo's first commit has to land on its first branch.
-  if ! git rev-parse --quiet --verify HEAD >/dev/null; then
-    exit 0
+  if ! branch="$(git symbolic-ref --quiet --short HEAD)"; then
+    # A rebase or bisect runs on a detached HEAD; other commits there
+    # are on no allowed branch.
+    if in_rebase_or_bisect; then
+      exit 0
+    fi
+    err "Commits on a detached HEAD are not allowed. Switch to a branch" \
+      "first."
+    exit 1
   fi
   reason="$(find_reason "${branch}")"
   if [[ -z "${reason}" ]]; then
@@ -173,7 +192,8 @@ DESCRIPTION
     --allow glob when any is given. With neither, main and master are
     denied. In a glob, * and ? never match /, **/ matches any folders,
     as in GitHub's rulesets; character classes are not supported.
-    A detached HEAD and a new repo's first commit are always allowed.
+    A new repo's first commit, and a detached HEAD during a rebase or
+    bisect, are always allowed.
 
 OPTIONS
         --allow GLOB     Allow only branches matching GLOB (repeatable)

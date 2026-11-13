@@ -65,33 +65,33 @@ session in every project. So the root never holds `AGENTS.md`,
 
 ## How to install
 
-There is no install script yet, so these steps are manual.
+1. Install the programs listed in
+   [`requirements/prerequisites`](./requirements/prerequisites) with
+   your system's package manager. daeshift checks them, but never
+   installs them.
 
-1. Check the prerequisites: git 2.31 or later, bash, python3 3.11 or
-   later, node, jq, tmux, curl and [pi].
-
-2. Clone daeshift to `~/.daeshift`. Everything that belongs to your
-   machine goes in `~/.daeshift/local/`, which git ignores:
+2. Clone daeshift to `~/.daeshift`, then run its installer:
 
 ```
-$ git clone git@github.com:daemorgue/daeshift.git ~/.daeshift
-$ mkdir -p ~/.daeshift/local/projects
-$ echo "runner=pi" > ~/.daeshift/local/config
+$ git clone https://github.com/daemorgue/daeshift.git ~/.daeshift
+$ ~/.daeshift/bin/daeshift --install
 ```
 
-3. Clone a project repo into `local/projects/`, and its code repos into
+   The installer checks the clone and the prerequisites, lists every
+   change it will make, and asks before making them. On a fresh clone
+   it checks out the newest release. It creates `~/.daeshift/local/`,
+   which git ignores, and installs the [pinned tools](#pinned-tools)
+   there. Running it again changes nothing.
+
+3. Add the `PATH` line the installer prints to your shell profile. If
+   git has no name and email yet, set them as the installer says.
+
+4. Clone a project repo into `local/projects/`, and its code repos into
    its `repositories/` folder:
 
 ```
 $ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
 ```
-
-4. Install daeshift's own tools, pinned, as described under
-   [Pinned tools](#pinned-tools).
-
-5. Add these to your `PATH`: `~/.daeshift/bin`,
-   `~/.daeshift/local/tools/bin` and
-   `~/.daeshift/local/tools/node/node_modules/.bin`.
 
 ## How to start a session
 
@@ -196,8 +196,9 @@ the variable for every shell that runs git.
 
 Every tool daeshift installs, in CI or on a machine, is pinned, by hash
 where possible (decision-9 on the daemorgue board). Tools a machine
-already shares with other software (git, bash, python3, node, tmux,
-curl, pi) are prerequisites: they are checked, not installed.
+already shares with other software are prerequisites, listed in
+[`requirements/prerequisites`](./requirements/prerequisites): they are
+checked, not installed.
 
 | Tools | Pinned in | How |
 |-------|-----------|-----|
@@ -206,18 +207,8 @@ curl, pi) are prerequisites: they are checked, not installed.
 | backlog.md, groma.md | `requirements/npm/package-lock.json` | npm's integrity hash for every package |
 | GitHub Actions | `.github/workflows/` | full commit SHA, version in a comment |
 
-Installing, from `~/.daeshift`:
-
-```
-$ cd ~/.daeshift
-$ ci/install-tools ~/.daeshift/local/tools
-$ python3 -m venv ~/.daeshift/local/tools/pre-commit
-$ ~/.daeshift/local/tools/pre-commit/bin/pip install \
-    --require-hashes --only-binary :all: -r requirements/pre-commit.txt
-$ mkdir -p ~/.daeshift/local/tools/node
-$ cp requirements/npm/package*.json ~/.daeshift/local/tools/node/
-$ npm ci --prefix ~/.daeshift/local/tools/node --ignore-scripts
-```
+`daeshift --install` installs them into `~/.daeshift/local/tools/`,
+and installs them again whenever a release changes a pin.
 
 `--only-binary :all:` means nothing is built from source, so no unpinned
 build tools are fetched, and `--ignore-scripts` means no package runs

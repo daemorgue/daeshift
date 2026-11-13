@@ -85,15 +85,10 @@ session in every project. So the root never holds `AGENTS.md`,
    there. Running it again changes nothing.
 
 3. Add the `PATH` line the installer prints to your shell profile. If
-   git has no name and email yet, set them as the installer says. Then
-   turn on daeshift's commit checks for every repo under
-   `~/.daeshift/local/projects/` by adding these lines to
-   `~/.gitconfig`:
-
-   ```
-   [includeIf "gitdir:~/.daeshift/local/projects/"]
-     path = ~/.daeshift/git/gitconfig
-   ```
+   git has no name and email yet, set them as the installer says. The
+   installer also turns on daeshift's commit checks for every repo
+   under `~/.daeshift/local/projects/`, with one line in your global git
+   config.
 
 4. Add a project. daeshift clones its project repo into
    `local/projects/`, then each code repo the project lists into its

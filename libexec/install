@@ -10,6 +10,11 @@
 set -o nounset
 set -o pipefail
 
+# The global git setting that turns on daeshift's hooks for every repo
+# under ~/.daeshift/local/projects/ (decision-14). git expands the ~.
+readonly HOOKS_KEY='includeIf.gitdir:~/.daeshift/local/projects/.path'
+# shellcheck disable=SC2088
+readonly HOOKS_VALUE='~/.daeshift/git/gitconfig'
 readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 readonly PORT_PATTERN='^[1-9][0-9]{0,4}$'
 # One line per service in config.yaml: kind, project, repo ("-" for a
@@ -244,6 +249,7 @@ main() {
   local changes=()
   local code_dir
   local daeshift_home="${HOME}/.daeshift"
+  local hooks_off="false"
   local local_dir
   local release=""
   local release_option=""
@@ -322,6 +328,10 @@ main() {
   if [[ -n "${release}" ]] || ! tools_current "${code_dir}" "${stamp}"; then
     changes+=("install the pinned tools into ${local_dir}/tools")
   fi
+  if ! git config --global --get "${HOOKS_KEY}" >/dev/null; then
+    hooks_off="true"
+    changes+=("turn on daeshift's git hooks in the global git config")
+  fi
   # Services are read with the pinned yq and filled in from the checked
   # out templates, so a config that comes before the tools or a release
   # waits for the next run.
@@ -370,6 +380,10 @@ main() {
     install_tools "${code_dir}" "${local_dir}/tools" "${stamp}" || exit 1
   elif [[ -n "${release}" ]]; then
     good "Pinned tools already current"
+  fi
+  if [[ "${hooks_off}" == "true" ]]; then
+    git config --global "${HOOKS_KEY}" "${HOOKS_VALUE}" || exit 1
+    good "Turned on daeshift's git hooks in the global git config"
   fi
   if [[ ${#service_changes[@]} -gt 0 ]]; then
     apply_services "${units_dir}" || exit 1

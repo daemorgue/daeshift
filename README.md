@@ -111,14 +111,17 @@ $ daeshift --project daemorgue
 
 `daeshift --project` starts the agent tool named by `runner=` in
 `~/.daeshift/local/config` (only `pi` so far), in the project's folder,
-with daeshift's instructions, skills and prompts. Set `DAESHIFT_HOME`
-to keep `local/` somewhere other than `~/.daeshift`.
+with daeshift's instructions, skills and prompts. You can set
+`DAESHIFT_HOME` to keep `local/` somewhere other than `~/.daeshift`, but
+daeshift's git hooks then don't run, because they only look in
+`~/.daeshift/local/projects/`.
 
 ## Learn more
 
-The git hooks and their checks, the pinned tools, and how to add a
-check or update a pin are described in the daemorgue project wiki, in
-`wiki/daeshift/` of the project repo.
+The daemorgue project wiki, in `wiki/daeshift/` of the
+daemorgue-context repo, describes the git hooks and their checks and
+the pinned tools. It also has how-to guides for adding a check and
+updating a pin.
 
 ## License
 

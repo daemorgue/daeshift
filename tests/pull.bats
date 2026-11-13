@@ -5,8 +5,8 @@
 # DAESHIFT_HOME holding local/projects/ and the yq on PATH as the pinned
 # yq (it must be mikefarah's, as CI's pinned tools provide), and three
 # source repos on main: demo.git, a project repo that ignores
-# repositories/ and whose repos.yaml lists site and blog, and the code
-# repos site and blog. No network is used.
+# repositories/, holds maps for site and blog, and whose repos.yaml lists
+# them, and the code repos site and blog. No network is used.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -63,6 +63,10 @@ setup() {
   done
   mkdir -p "${BATS_TEST_TMPDIR}/demo.git/.config"
   echo "repositories/" > "${BATS_TEST_TMPDIR}/demo.git/.gitignore"
+  mkdir -p "${BATS_TEST_TMPDIR}/demo.git/maps/site" \
+    "${BATS_TEST_TMPDIR}/demo.git/maps/blog"
+  touch "${BATS_TEST_TMPDIR}/demo.git/maps/site/index.md" \
+    "${BATS_TEST_TMPDIR}/demo.git/maps/blog/index.md"
   list_repos site blog
   daeshift="${BATS_TEST_DIRNAME}/../bin/daeshift"
   projects="${DAESHIFT_HOME}/local/projects"
@@ -74,6 +78,18 @@ setup() {
   assert_contains "${output}" "Project demo is up to date."
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\nsite')"
+}
+
+@test "add-project creates the map folder of a repo with no map" {
+  git init --quiet --initial-branch=main "${BATS_TEST_TMPDIR}/docs"
+  commit_file "${BATS_TEST_TMPDIR}/docs" "first"
+  list_repos docs
+  run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "docs has no map yet."
+  assert_equal "$(ls -d "${projects}/demo/maps/docs")" \
+    "${projects}/demo/maps/docs"
+  assert_equal "$(git -C "${projects}/demo" status --porcelain)" ""
 }
 
 @test "add-project names the project after --name" {
@@ -116,10 +132,48 @@ setup() {
     "$(printf 'blog\nsite')"
 }
 
+@test "add-project sets up each clone" {
+  local site="${projects}/demo/repositories/site"
+
+  commit_file "${BATS_TEST_TMPDIR}/site" "AGENTS.md"
+  run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  assert_equal "${status}" 0
+  assert_contains "${output}" \
+    "Set up ${site}: exclude lines, groma link, AGENTS.override.md"
+  assert_equal "$(grep --invert-match '^#' "${site}/.git/info/exclude")" \
+    "$(printf 'groma\nAGENTS.md\nAGENTS.override.md\nCLAUDE.md\n.pi/')"
+  assert_equal "$(readlink "${site}/groma")" "../../maps/site"
+  assert_contains "$(cat "${site}/AGENTS.override.md")" \
+    "does not apply in daeshift"
+  assert_equal "$(ls "${projects}/demo/repositories/blog/AGENTS.override.md" \
+    2>/dev/null)" ""
+}
+
 @test "add-project without a URL prints the help and fails" {
   run "${daeshift}" --name demo
   assert_equal "${status}" 1
   assert_contains "${output}" "Usage: daeshift"
+}
+
+@test "pull adds a newline before the exclude lines when one is missing" {
+  local exclude="${projects}/demo/repositories/site/.git/info/exclude"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  printf '%s' "mine" > "${exclude}"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(head -n 2 "${exclude}")" "$(printf 'mine\ngroma')"
+}
+
+@test "pull adds only the missing exclude lines" {
+  local exclude="${projects}/demo/repositories/site/.git/info/exclude"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  printf '%s\n' "groma" ".pi/" > "${exclude}"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(cat "${exclude}")" \
+    "$(printf 'groma\n.pi/\nAGENTS.md\nAGENTS.override.md\nCLAUDE.md')"
 }
 
 @test "pull clones a repo the project lists since the last pull" {
@@ -131,6 +185,16 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\ndocs\nsite')"
+}
+
+@test "pull creates the map folder behind a link that points at nothing" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm -r "${projects}/demo/maps/site"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "site has no map yet."
+  assert_equal "$(ls -d "${projects}/demo/maps/site")" \
+    "${projects}/demo/maps/site"
 }
 
 @test "pull fails for a project that does not exist" {
@@ -151,6 +215,17 @@ setup() {
     "feature"
 }
 
+@test "pull keeps an AGENTS.override.md that is already there" {
+  local site="${projects}/demo/repositories/site"
+
+  commit_file "${BATS_TEST_TMPDIR}/site" "AGENTS.md"
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  echo "mine" > "${site}/AGENTS.override.md"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(cat "${site}/AGENTS.override.md")" "mine"
+}
+
 @test "pull keeps an ignored file that the upstream starts to track" {
   local site="${projects}/demo/repositories/site"
 
@@ -161,6 +236,19 @@ setup() {
   run "${daeshift}" --project demo --pull
   assert_equal "${status}" 1
   assert_equal "$(cat "${site}/AGENTS.md")" "mine"
+}
+
+@test "pull leaves a groma folder alone" {
+  local site="${projects}/demo/repositories/site"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm "${site}/groma"
+  mkdir "${site}/groma"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "groma is not a link to ../../maps/site."
+  assert_equal "$(find "${site}/groma" -maxdepth 0 -type d)" \
+    "${site}/groma"
 }
 
 @test "pull reports a clone it cannot fast-forward and pulls the rest" {
@@ -205,6 +293,24 @@ setup() {
   run "${daeshift}" --quiet --project demo --pull
   assert_equal "${status}" 0
   assert_equal "${output}" ""
+}
+
+@test "pull sets up a clone it skips" {
+  local site="${projects}/demo/repositories/site"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm "${site}/groma"
+  echo "draft" > "${site}/draft"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Set up ${site}: groma link"
+}
+
+@test "pull sets up nothing on a clone already set up" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(printf '%s\n' "${output}" | grep --count "Set up")" "0"
 }
 
 @test "pull skips a clone on another branch" {

@@ -8,11 +8,18 @@
 set -o nounset
 set -o pipefail
 
+# The paths every code repo clone keeps out of git (code-repos item 2).
+readonly EXCLUDES=(groma AGENTS.md AGENTS.override.md CLAUDE.md .pi/)
 readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+readonly OVERRIDE_TEXT="# Instructions for this clone
+
+This repository's own AGENTS.md or CLAUDE.md does not apply in daeshift
+sessions. Follow daeshift's instructions and the AGENTS.md of the
+project repo, two folders up."
 
 # Every outside program pull runs. check_dependencies reports each
 # missing one before any work starts.
-dependencies=(git)
+dependencies=(git grep ln mkdir readlink tail)
 quiet="false"
 # Set by update_clone when it leaves a clone as it is.
 skipped="false"
@@ -181,6 +188,7 @@ pull_repos() {
   local entries
   local failed="false"
   local name
+  local pulled
   local url
 
   if ! entries="$("$2" '.repos[] | .name + "\t" + .url' \
@@ -195,14 +203,81 @@ pull_repos() {
     if [[ ! "${name}" =~ ${NAME_PATTERN} ]]; then
       warn "$1/.config/repos.yaml: '${name}' is not a plain repo name."
       failed="true"
-    elif [[ -d "$1/repositories/${name}" ]]; then
-      update_clone "$1/repositories/${name}" || failed="true"
+      continue
+    fi
+    pulled="true"
+    if [[ -d "$1/repositories/${name}" ]]; then
+      update_clone "$1/repositories/${name}" || pulled="false"
     else
-      clone_repo "${url}" "$1/repositories/${name}" || failed="true"
+      clone_repo "${url}" "$1/repositories/${name}" || pulled="false"
+    fi
+    # A skipped update counts as pulled and is set up too: setup
+    # touches only excluded paths.
+    if [[ "${pulled}" == "false" ]] \
+      || ! set_up_clone "$1/repositories/${name}" "${name}" "$1"; then
+      failed="true"
     fi
   done <<<"${entries}"
   if [[ "${failed}" == "true" ]]; then
     return 1
+  fi
+}
+
+# Sets up code repo clone $1, named $2, of project folder $3: the
+# missing exclude lines, the groma link to the project's map, and an
+# AGENTS.override.md when the clone tracks AGENTS.md or CLAUDE.md. Warns
+# about what it leaves alone; prints one line naming what it set up.
+set_up_clone() {
+  local exclude
+  local excluded="true"
+  local line
+  local map="$3/maps/$2"
+  local set_up=""
+  local tracked
+
+  exclude="$(git -C "$1" rev-parse --git-path info/exclude)" || return 1
+  if [[ "${exclude}" != /* ]]; then
+    exclude="$1/${exclude}"
+  fi
+  mkdir -p "${exclude%/*}" || return 1
+  # A last line without a newline would run into the first added line.
+  if [[ -s "${exclude}" && -n "$(tail -c 1 "${exclude}")" ]]; then
+    echo >> "${exclude}" || return 1
+  fi
+  for line in "${EXCLUDES[@]}"; do
+    if ! grep --fixed-strings --line-regexp --quiet -- "${line}" \
+      "${exclude}" 2>/dev/null; then
+      echo "${line}" >> "${exclude}" || return 1
+      excluded="false"
+    fi
+  done
+  if [[ "${excluded}" == "false" ]]; then
+    set_up+=", exclude lines"
+  fi
+  if [[ ! -e "$1/groma" && ! -L "$1/groma" ]]; then
+    ln -s "../../maps/$2" "$1/groma" || return 1
+    set_up+=", groma link"
+  fi
+  tracked="$(git -C "$1" ls-files -- AGENTS.md CLAUDE.md)" || return 1
+  if [[ -n "${tracked}" && ! -e "$1/AGENTS.override.md" \
+    && ! -L "$1/AGENTS.override.md" ]]; then
+    printf '%s\n' "${OVERRIDE_TEXT}" > "$1/AGENTS.override.md" \
+      || return 1
+    set_up+=", AGENTS.override.md"
+  fi
+  if [[ -n "${set_up}" ]]; then
+    good "Set up $1: ${set_up#, }"
+  fi
+  if [[ ! -L "$1/groma" ]] \
+    || [[ "$(readlink "$1/groma")" != "../../maps/$2" ]]; then
+    warn "$1/groma is not a link to ../../maps/$2. Left as it is."
+    return 0
+  fi
+  # groma init cannot write through a link that points at nothing.
+  mkdir -p "${map}" || return 1
+  if [[ ! -f "${map}/index.md" ]]; then
+    warn "$2 has no map yet. Start one with: groma init --directory" \
+      "groma, in $1"
   fi
 }
 

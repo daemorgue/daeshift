@@ -2,21 +2,40 @@
 
 # install: set up, update or roll back daeshift on this machine. Checks
 # the prerequisites and the clone, lists every change, asks once, then
-# makes the changes: check out a release, create local/, and install the
-# pinned tools into local/tools/. Started by "daeshift --install",
+# makes the changes: check out a release, create local/, install the
+# pinned tools into local/tools/, and set up the board and map services
+# that local/config.yaml asks for. Started by "daeshift --install",
 # "--update" or "--release TAG"; run "install --help" for usage.
 
 set -o nounset
 set -o pipefail
 
+readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+readonly PORT_PATTERN='^[1-9][0-9]{0,4}$'
+# One line per service in config.yaml: kind, project, repo ("-" for a
+# board) and port, separated by tabs. $p is yq's, not the shell's.
+# shellcheck disable=SC2016
+readonly SERVICES_QUERY='(.projects // {}) | to_entries | .[] | .key as $p
+  | ((select(.value.board != null)
+      | "board\t" + $p + "\t-\t" + (.value.board | tostring)),
+    ((.value.repos // {}) | to_entries | .[]
+      | "map\t" + $p + "\t" + .key + "\t" + (.value | tostring)))'
+readonly UNIT_MARKER="# Written by daeshift --install"
 readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
 # Every outside program install runs. check_dependencies reports each
 # missing one before any work starts.
 # npm and python3 are checked with the prerequisites, which name the
 # version needed.
-dependencies=(cat cp dirname git ln mkdir rm shasum)
+dependencies=(cat cp dirname git grep id ln mkdir rm shasum uname)
 quiet="false"
+# Filled by plan_services: the changes to list, the units to write with
+# their text, and the units daeshift wrote that config.yaml no longer
+# asks for.
+service_changes=()
+stale_units=()
+unit_names=()
+unit_texts=()
 
 ### Helpers begin
 err() { echo "[!] $*" >&2; }
@@ -35,6 +54,36 @@ info() {
 
 warn() { echo "[-] $*"; }
 ### Helpers end
+
+# Makes the service changes plan_services planned, in units folder $1:
+# stops and removes the stale units, writes the others, then enables
+# and restarts them.
+apply_services() {
+  local index=0
+
+  mkdir -p "$1" || return 1
+  while [[ ${index} -lt ${#stale_units[@]} ]]; do
+    systemctl --user --quiet disable --now "${stale_units[index]}" \
+      || return 1
+    rm -f "$1/${stale_units[index]}" || return 1
+    good "Removed service ${stale_units[index]}"
+    index=$((index + 1))
+  done
+  index=0
+  while [[ ${index} -lt ${#unit_names[@]} ]]; do
+    printf '%s\n' "${unit_texts[index]}" > "$1/${unit_names[index]}" \
+      || return 1
+    index=$((index + 1))
+  done
+  systemctl --user daemon-reload || return 1
+  index=0
+  while [[ ${index} -lt ${#unit_names[@]} ]]; do
+    systemctl --user --quiet enable "${unit_names[index]}" || return 1
+    systemctl --user restart "${unit_names[index]}" || return 1
+    good "Started service ${unit_names[index]}"
+    index=$((index + 1))
+  done
+}
 
 # Reports every program in dependencies that is missing. Fails if any
 # is missing.
@@ -106,6 +155,49 @@ check_prerequisites() {
   fi
 }
 
+# Checks one service from config.yaml under local folder $1: project $2
+# exists, repo $3 ("-" for a board) is listed in the project's
+# .config/repos.yaml and cloned, and port $4 is from 1024 to 65535 and
+# not among the ports $5. Says what is wrong; fails if anything is.
+check_service() {
+  local config="$1/config.yaml"
+  local project_dir="$1/projects/$2"
+  local service="the map of $2/$3"
+
+  if [[ "$3" == "-" ]]; then
+    service="the board of $2"
+  fi
+  if [[ ! "$2" =~ ${NAME_PATTERN} || ! -d "${project_dir}" ]]; then
+    err "${config}: there is no project '$2' in $1/projects."
+    return 1
+  fi
+  if [[ ! "$4" =~ ${PORT_PATTERN} ]] || (( $4 < 1024 || $4 > 65535 )); then
+    err "${config}: port '$4' of ${service} is not a number from 1024" \
+      "to 65535."
+    return 1
+  fi
+  if [[ "$5" == *" $4 "* ]]; then
+    err "${config}: port $4 is used twice. Give each service its own."
+    return 1
+  fi
+  if [[ "$3" == "-" ]]; then
+    return 0
+  fi
+  if [[ ! "$3" =~ ${NAME_PATTERN} ]] \
+    || ! "$1/tools/bin/yq" '.repos[].name' \
+      "${project_dir}/.config/repos.yaml" \
+      | grep --fixed-strings --line-regexp --quiet -- "$3"; then
+    err "${config}: repo '$3' is not listed in" \
+      "${project_dir}/.config/repos.yaml."
+    return 1
+  fi
+  if [[ ! -d "${project_dir}/repositories/$3" ]]; then
+    err "${project_dir}/repositories/$3 does not exist. Clone $3 there," \
+      "then try again."
+    return 1
+  fi
+}
+
 # Installs the pinned tools of code folder $1 into tools folder $2. The
 # stamp $3 is removed first and written last, so a failed run is tried
 # again next time. Says which step failed.
@@ -157,8 +249,10 @@ main() {
   local release_option=""
   local script_dir
   local stamp
+  local units_dir="${HOME}/.config/systemd/user"
   local update="false"
   local wanted=""
+  local yq_missing="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -225,6 +319,16 @@ main() {
   if [[ -n "${release}" ]] || ! tools_current "${code_dir}" "${stamp}"; then
     changes+=("install the pinned tools into ${local_dir}/tools")
   fi
+  # Services are read with the pinned yq, so a config that comes before
+  # the tools waits for the next run.
+  if [[ -f "${local_dir}/config.yaml" \
+    && ! -x "${local_dir}/tools/bin/yq" ]]; then
+    yq_missing="true"
+  fi
+  plan_services "${code_dir}" "${local_dir}" "${units_dir}" || exit 1
+  if [[ ${#service_changes[@]} -gt 0 ]]; then
+    changes+=("${service_changes[@]}")
+  fi
   if [[ ${#changes[@]} -eq 0 ]]; then
     good "Nothing to change."
     print_next_steps "${code_dir}" "${local_dir}"
@@ -261,6 +365,13 @@ main() {
     install_tools "${code_dir}" "${local_dir}/tools" "${stamp}" || exit 1
   elif [[ -n "${release}" ]]; then
     good "Pinned tools already current"
+  fi
+  if [[ ${#service_changes[@]} -gt 0 ]]; then
+    apply_services "${units_dir}" || exit 1
+  fi
+  if [[ "${yq_missing}" == "true" ]]; then
+    warn "Run daeshift --install again to set up the services in" \
+      "${local_dir}/config.yaml, if it has any."
   fi
   print_next_steps "${code_dir}" "${local_dir}"
 }
@@ -344,6 +455,112 @@ pick_release() {
   echo "${target}"
 }
 
+# Plans the board and map services that config.yaml in local folder $2
+# asks for, from the templates in code folder $1, against the units in
+# folder $3. Fills service_changes, stale_units, unit_names and
+# unit_texts. Warns when the machine has no systemd or linger is off.
+# Fails, saying why, for a config it cannot read or a service it cannot
+# set up.
+plan_services() {
+  local config="$2/config.yaml"
+  local entries
+  local failed="false"
+  local first_line
+  local kind
+  local name
+  local port
+  local project
+  local repo
+  local text
+  local unit
+  local used_ports=" "
+  local wanted=" "
+  local yq="$2/tools/bin/yq"
+
+  if [[ ! -f "${config}" || ! -x "${yq}" ]]; then
+    return 0
+  fi
+  if ! entries="$("${yq}" "${SERVICES_QUERY}" "${config}")"; then
+    err "${config} could not be read. Fix it, then try again."
+    return 1
+  fi
+  if [[ "$(uname -s)" != "Linux" ]]; then
+    if [[ -n "${entries}" ]]; then
+      warn "${config} sets services, but they need systemd, which this" \
+        "machine lacks; none is set up."
+    fi
+    return 0
+  fi
+  while IFS=$'\t' read -r kind project repo port; do
+    if [[ -z "${kind}" ]]; then
+      continue
+    fi
+    if ! check_service "$2" "${project}" "${repo}" "${port}" \
+      "${used_ports}"; then
+      failed="true"
+      continue
+    fi
+    used_ports+="${port} "
+    if [[ "${kind}" == "board" ]]; then
+      name="backlog-${project}.service"
+      text="$(render_unit "$1/services/systemd/backlog.service" \
+        "${project}" "$2/projects/${project}" "${port}" "$2")" || return 1
+    else
+      name="groma-${project}-${repo}.service"
+      text="$(render_unit "$1/services/systemd/groma.service" "${repo}" \
+        "$2/projects/${project}/repositories/${repo}" "${port}" "$2")" \
+        || return 1
+    fi
+    if [[ "${wanted}" == *" ${name} "* ]]; then
+      err "${config}: two services would share the unit ${name}. Rename" \
+        "a project or repo."
+      failed="true"
+      continue
+    fi
+    wanted+="${name} "
+    unit="$3/${name}"
+    first_line=""
+    if [[ -f "${unit}" ]]; then
+      IFS= read -r first_line < "${unit}"
+      if [[ "${first_line}" != "${UNIT_MARKER}"* ]]; then
+        err "${unit} was not written by daeshift. Move it away, then try" \
+          "again."
+        failed="true"
+        continue
+      fi
+      if [[ "$(cat "${unit}")" == "${text}" ]]; then
+        continue
+      fi
+      service_changes+=("update service ${name}")
+    else
+      service_changes+=("set up service ${name} on port ${port}")
+    fi
+    unit_names+=("${name}")
+    unit_texts+=("${text}")
+  done <<<"${entries}"
+  if [[ "${failed}" == "true" ]]; then
+    return 1
+  fi
+
+  for unit in "$3"/*.service; do
+    name="${unit##*/}"
+    if [[ ! -f "${unit}" || "${wanted}" == *" ${name} "* ]]; then
+      continue
+    fi
+    IFS= read -r first_line < "${unit}"
+    if [[ "${first_line}" == "${UNIT_MARKER}"* ]]; then
+      service_changes+=("remove service ${name}")
+      stale_units+=("${name}")
+    fi
+  done
+  if [[ "${wanted}" != " " \
+    && "$(loginctl show-user "$(id -un)" --property=Linger --value)" \
+      != "yes" ]]; then
+    warn "Services stop when you log out and do not start at boot. Keep" \
+      "them running with: sudo loginctl enable-linger $(id -un)"
+  fi
+}
+
 # Prints the lines to add by hand that this machine still lacks: the
 # PATH folders from code folder $1 and local folder $2, and a git
 # identity.
@@ -362,6 +579,24 @@ print_next_steps() {
     warn "git has no identity yet: git config --global user.name" \
       "\"Your Name\"; git config --global user.email you@example.com"
   fi
+}
+
+# Prints unit template $1 filled in for name $2, working folder $3 and
+# port $4, with the pinned tools of local folder $5 and node on PATH.
+render_unit() {
+  local node
+  local path
+  local text
+  local tools="$5/tools/node/node_modules/.bin"
+
+  node="$(command -v node)" || return 1
+  path="${tools}:$5/tools/bin:${node%/*}:/usr/local/bin:/usr/bin:/bin"
+  text="$(cat "$1")" || return 1
+  text="${text//@FOLDER@/$3}"
+  text="${text//@NAME@/$2}"
+  text="${text//@PATH@/${path}}"
+  text="${text//@PORT@/$4}"
+  echo "${text//@TOOLS@/${tools}}"
 }
 
 # Answers whether stamp file $2 matches the pinned tool lists of code

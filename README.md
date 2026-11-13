@@ -44,6 +44,7 @@ runners/
   pi/             the parts only pi understands
     extensions/   code that adds commands and checks to pi
     agents/       roles, read by the subagent extension
+services/systemd/ templates for the board and map services
 ci/check-root     the check that keeps the root free of instruction files
 tests/            tests for daeshift's scripts
 LICENSE
@@ -115,6 +116,29 @@ with daeshift's instructions, skills and prompts. You can set
 `DAESHIFT_HOME` to keep `local/` somewhere other than `~/.daeshift`, but
 daeshift's git hooks then don't run, because they only look in
 `~/.daeshift/local/projects/`.
+
+## How to serve the board and maps
+
+On Linux, daeshift can run each project's board and each code repo's
+map as a systemd user service, so you can open them in a browser.
+Give each one a port of its own in `~/.daeshift/local/config.yaml`:
+
+```yaml
+runner: pi
+projects:
+  daemorgue:
+    board: 4748
+    repos:
+      daeshift: 4747
+```
+
+Then run `daeshift --install`. It checks that each project exists and
+that each repo is listed in the project's `.config/repos.yaml` and
+cloned, lists the services to set up, update or remove, and asks
+first. Take a port out of the file and the next install removes its
+service. To keep the services running after you log out and after a
+restart, run the `sudo loginctl enable-linger` command the installer
+prints. daeshift never runs sudo itself.
 
 ## How to update
 

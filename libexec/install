@@ -3,13 +3,21 @@
 # install: set up, update or roll back daeshift on this machine. Checks
 # the prerequisites and the clone, lists every change, asks once, then
 # makes the changes: check out a release, create local/, install the
-# pinned tools into local/tools/, and set up the board and map services
-# that local/config.yaml asks for. Started by "daeshift --install",
+# pinned tools into local/tools/, set up the board and map services
+# that local/config.yaml asks for, and turn on daeshift's git hooks in
+# the global git config. Started by "daeshift --install",
 # "--update" or "--release TAG"; run "install --help" for usage.
 
 set -o nounset
 set -o pipefail
 
+# The global git setting that turns on daeshift's hooks for every repo
+# under ~/.daeshift/local/projects/ (decision-14), and its change line.
+readonly HOOKS_CHANGE="add the includeIf for ~/.daeshift/local/projects/"
+readonly HOOKS_KEY='includeIf.gitdir:~/.daeshift/local/projects/.path'
+# git expands the ~ itself when it reads the setting.
+# shellcheck disable=SC2088
+readonly HOOKS_VALUE='~/.daeshift/git/gitconfig'
 readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 readonly PORT_PATTERN='^[1-9][0-9]{0,4}$'
 # One line per service in config.yaml: kind, project, repo ("-" for a
@@ -244,6 +252,7 @@ main() {
   local changes=()
   local code_dir
   local daeshift_home="${HOME}/.daeshift"
+  local hooks_off="false"
   local local_dir
   local release=""
   local release_option=""
@@ -334,6 +343,10 @@ main() {
   if [[ ${#service_changes[@]} -gt 0 ]]; then
     changes+=("${service_changes[@]}")
   fi
+  if ! git config --global --get "${HOOKS_KEY}" >/dev/null; then
+    hooks_off="true"
+    changes+=("${HOOKS_CHANGE} to the global git config")
+  fi
   if [[ ${#changes[@]} -eq 0 ]]; then
     good "Nothing to change."
     print_next_steps "${code_dir}" "${local_dir}"
@@ -373,6 +386,11 @@ main() {
   fi
   if [[ ${#service_changes[@]} -gt 0 ]]; then
     apply_services "${units_dir}" || exit 1
+  fi
+  if [[ "${hooks_off}" == "true" ]]; then
+    git config --global "${HOOKS_KEY}" "${HOOKS_VALUE}" || exit 1
+    good "Added the includeIf for ~/.daeshift/local/projects/ to the" \
+      "global git config"
   fi
   if [[ "${services_later}" == "true" ]]; then
     warn "Run daeshift --install again to set up the services in" \

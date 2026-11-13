@@ -71,6 +71,7 @@ setup() {
 
   export HOME="${BATS_TEST_TMPDIR}/home"
   export DAESHIFT_HOME="${HOME}/.daeshift"
+  export GIT_CONFIG_GLOBAL="${HOME}/.gitconfig"
   mkdir -p "${HOME}/bin" "${source}/ci"
   # The stand-ins' own lines must reach their files unexpanded.
   # shellcheck disable=SC2016
@@ -118,6 +119,7 @@ setup() {
   assert_contains "${output}" "Nothing changed."
   assert_equal "$(ls "${DAESHIFT_HOME}/local" 2>/dev/null)" ""
   assert_equal "$(git -C "${DAESHIFT_HOME}" branch --show-current)" "main"
+  assert_equal "$(git config --global --get-regexp '^includeif\.')" ""
 }
 
 @test "install checks out the newest release on a fresh clone and installs" {
@@ -338,6 +340,18 @@ setup() {
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 0
   assert_contains "${output}" "start service backlog-demo.service"
+}
+
+@test "install turns on daeshift's git hooks" {
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" \
+    "add the includeIf for ~/.daeshift/local/projects/ to the global"
+  # git stores the ~ as written.
+  # shellcheck disable=SC2088
+  assert_equal \
+    "$(git config --global includeIf.gitdir:~/.daeshift/local/projects/.path)" \
+    "~/.daeshift/git/gitconfig"
 }
 
 @test "install updates a service whose port changed" {

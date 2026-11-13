@@ -5,8 +5,10 @@
 # DAESHIFT_HOME holding local/projects/ and the yq on PATH as the pinned
 # yq (it must be mikefarah's, as CI's pinned tools provide), and three
 # source repos on main: demo.git, a project repo that ignores
-# repositories/, holds maps for site and blog, and whose repos.yaml lists
-# them, and the code repos site and blog. No network is used.
+# repositories/, holds maps for site and blog and a board whose projects
+# match its repos.yaml, which lists site and blog, and the code repos
+# site and blog. The global git config turns daeshift's hooks on. No
+# network is used.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -54,6 +56,7 @@ setup() {
 
   export HOME="${BATS_TEST_TMPDIR}/home"
   export DAESHIFT_HOME="${HOME}/.daeshift"
+  export GIT_CONFIG_GLOBAL="${HOME}/.gitconfig"
   mkdir -p "${DAESHIFT_HOME}/local/projects" \
     "${DAESHIFT_HOME}/local/tools/bin"
   ln -s "$(command -v yq)" "${DAESHIFT_HOME}/local/tools/bin/yq"
@@ -67,6 +70,13 @@ setup() {
     "${BATS_TEST_TMPDIR}/demo.git/maps/blog"
   touch "${BATS_TEST_TMPDIR}/demo.git/maps/site/index.md" \
     "${BATS_TEST_TMPDIR}/demo.git/maps/blog/index.md"
+  mkdir -p "${BATS_TEST_TMPDIR}/demo.git/backlog"
+  echo 'projects: ["_project", "site", "blog"]' \
+    > "${BATS_TEST_TMPDIR}/demo.git/backlog/config.yml"
+  # git expands the ~ itself, as the real setting has it.
+  # shellcheck disable=SC2088
+  git config --global includeIf.gitdir:~/.daeshift/local/projects/.path \
+    "~/.daeshift/git/gitconfig"
   list_repos site blog
   daeshift="${BATS_TEST_DIRNAME}/../bin/daeshift"
   projects="${DAESHIFT_HOME}/local/projects"
@@ -149,6 +159,19 @@ setup() {
     2>/dev/null)" ""
 }
 
+@test "add-project warns when the board's projects differ from repos.yaml" {
+  local project="${BATS_TEST_TMPDIR}/demo.git"
+
+  echo 'projects: ["_project", "site", "old"]' \
+    > "${project}/backlog/config.yml"
+  commit_file "${project}" "board"
+  run "${daeshift}" --add-project "${project}"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Not on the board: blog. On the board only: old."
+  assert_equal "$(cat "${projects}/demo/backlog/config.yml")" \
+    'projects: ["_project", "site", "old"]'
+}
+
 @test "add-project without a URL prints the help and fails" {
   run "${daeshift}" --name demo
   assert_equal "${status}" 1
@@ -185,6 +208,15 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\ndocs\nsite')"
+}
+
+@test "pull compares no board when the project has none" {
+  git -C "${BATS_TEST_TMPDIR}/demo.git" rm --quiet backlog/config.yml
+  commit_file "${BATS_TEST_TMPDIR}/demo.git" "no-board"
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  run "${daeshift}" --quiet --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "${output}" ""
 }
 
 @test "pull creates the map folder behind a link that points at nothing" {
@@ -375,6 +407,15 @@ setup() {
   assert_equal "$(cat "${projects}/demo/repositories/site/draft")" "draft"
   assert_equal "$(ls "${projects}/demo/repositories/site/upstream" \
     2>/dev/null)" ""
+}
+
+@test "pull warns when daeshift's git hooks are off" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  git config --global --unset \
+    includeIf.gitdir:~/.daeshift/local/projects/.path
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "daeshift's git hooks are off."
 }
 
 @test "pull with --add-project prints the help and fails" {

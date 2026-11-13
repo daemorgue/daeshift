@@ -10,6 +10,8 @@ set -o pipefail
 
 # The paths every code repo clone keeps out of git (code-repos item 2).
 readonly EXCLUDES=(groma AGENTS.md AGENTS.override.md CLAUDE.md .pi/)
+# The global git setting that turns on daeshift's hooks; install adds it.
+readonly HOOKS_KEY='includeIf.gitdir:~/.daeshift/local/projects/.path'
 readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 readonly OVERRIDE_TEXT="# Instructions for this clone
 
@@ -59,6 +61,42 @@ add_project() {
     err "The project was not added. Check the message above, then try" \
       "again."
     return 1
+  fi
+}
+
+# Warns when the board's projects in backlog/config.yml of project folder
+# $1 differ from the repos its repos.yaml lists plus _project, read with
+# the pinned yq $2. Changes neither file.
+check_board() {
+  local board="$1/backlog/config.yml"
+  local extra=""
+  local listed
+  local missing=""
+  local name
+  local projects
+
+  if [[ ! -f "${board}" ]]; then
+    return 0
+  fi
+  projects="$("$2" '.projects[]' "${board}")" || return 1
+  listed="$("$2" '.repos[].name' "$1/.config/repos.yaml")" || return 1
+  listed="_project"$'\n'"${listed}"
+  while IFS= read -r name; do
+    if [[ -n "${name}" ]] && ! grep --fixed-strings --line-regexp \
+      --quiet -- "${name}" <<<"${projects}"; then
+      missing+=" ${name}"
+    fi
+  done <<<"${listed}"
+  while IFS= read -r name; do
+    if [[ -n "${name}" ]] && ! grep --fixed-strings --line-regexp \
+      --quiet -- "${name}" <<<"${listed}"; then
+      extra+=" ${name}"
+    fi
+  done <<<"${projects}"
+  if [[ -n "${missing}${extra}" ]]; then
+    warn "${board}: the board's projects differ from repos.yaml plus" \
+      "_project. Not on the board:${missing:- none}. On the board" \
+      "only:${extra:- none}."
   fi
 }
 
@@ -168,6 +206,13 @@ main() {
   fi
 
   pull_repos "${projects_dir}/${project}" "${yq}" || failed="true"
+  if ! check_board "${projects_dir}/${project}" "${yq}"; then
+    warn "The board's projects of ${project} could not be compared."
+  fi
+  if ! git config --global --get "${HOOKS_KEY}" >/dev/null; then
+    warn "daeshift's git hooks are off. Turn them on with: daeshift" \
+      "--install"
+  fi
   if [[ "${failed}" == "true" ]]; then
     err "Some repos of ${project} were not pulled. Fix what is reported" \
       "above, then run: daeshift --project ${project} --pull"

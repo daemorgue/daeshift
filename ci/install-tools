@@ -124,9 +124,13 @@ install_shellcheck() {
       expected="${SHELLCHECK_SHA256_LINUX_AARCH64}"
       name="linux.aarch64"
       ;;
-    *)
+    "linux-x86_64")
       expected="${SHELLCHECK_SHA256_LINUX_X86_64}"
       name="linux.x86_64"
+      ;;
+    *)
+      err "ShellCheck has no pinned download for $2."
+      return 1
       ;;
   esac
   archive="${dir}/shellcheck.tar.gz"
@@ -161,9 +165,13 @@ install_yq() {
       expected="${YQ_SHA256_LINUX_AARCH64}"
       name="linux_arm64"
       ;;
-    *)
+    "linux-x86_64")
       expected="${YQ_SHA256_LINUX_X86_64}"
       name="linux_amd64"
+      ;;
+    *)
+      err "yq has no pinned download for $2."
+      return 1
       ;;
   esac
   url="https://github.com/mikefarah/yq/releases/download"

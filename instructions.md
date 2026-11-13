@@ -82,11 +82,13 @@ The cold-start report may list several tasks, but asks about one.
   helps (a folder tree, a flow, a before and after). Draw visuals as
   plain text without code fences. Link the task on the board as
   `http://127.0.0.1:4748/tasks/<ID>`.
-- **When presenting a problem:** tell it as a short story. Miles, a
-  developer new to the part, hits the problem in concrete steps and
-  sees what goes wrong; Adam, an experienced developer, names what was
-  missing. Always use these two names. The story fits the body: a few
-  short steps or bullets, then a small before and after.
+- **When presenting a problem:** tell it as a short story. Miles, an
+  engineer new to the part, hits the problem in concrete steps and sees
+  what goes wrong; Adam, an experienced engineer, names what was
+  missing or wrong, but not yet the fix, which is the plan. Always use
+  these two names. The story fits the body: at most three bullets, plus
+  a small before and after (what Miles saw, what he expected) where it
+  helps. The status header and the closing question stay as usual.
 - **When a PR is open:** summarize what the reviewer found and what was
   done about it.
 - **At the end of a task, or a merge:** a one-row table with the columns

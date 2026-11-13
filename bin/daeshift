@@ -139,7 +139,7 @@ read_runner() {
     return 1
   fi
   if [[ ! -x "${yq}" ]]; then
-    err "${yq} was not found. Run daeshift --install."
+    err "${yq} is missing or cannot be run. Run daeshift --install."
     return 1
   fi
   if ! runner="$("${yq}" '.runner // ""' "${config}")"; then

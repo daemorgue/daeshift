@@ -3,7 +3,8 @@
 # Tests for bin/daeshift. Each test gets its own home folder holding a
 # DAESHIFT_HOME with two projects, a config naming pi and the yq found on
 # PATH as its pinned yq, and a stand-in pi on PATH that records the folder
-# it started in and its arguments.
+# it started in and its arguments. The yq on PATH must be mikefarah's, as
+# CI's pinned tools provide.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -48,7 +49,7 @@ setup() {
   assert_equal "${output}" "$(printf 'daemorgue\ntired-labs')"
 }
 
-@test "daeshift --project fails for a config that yq cannot read" {
+@test "daeshift --project fails for a config that is not valid YAML" {
   echo "runner: [pi" > "${DAESHIFT_HOME}/local/config.yaml"
   run "${daeshift}" --project daemorgue
   assert_equal "${status}" 1
@@ -87,7 +88,7 @@ setup() {
   rm "${DAESHIFT_HOME}/local/tools/bin/yq"
   run "${daeshift}" --project daemorgue
   assert_equal "${status}" 1
-  assert_contains "${output}" "yq was not found. Run daeshift --install."
+  assert_contains "${output}" "yq is missing or cannot be run."
 }
 
 @test "daeshift --project starts pi in the project with daeshift's parts" {
@@ -104,5 +105,6 @@ setup() {
   echo "runner: \$(touch ${HOME}/ran)" > "${DAESHIFT_HOME}/local/config.yaml"
   run "${daeshift}" --project daemorgue
   assert_equal "${status}" 1
+  assert_contains "${output}" "is not a plain name."
   assert_equal "$(ls "${HOME}/ran" 2>/dev/null)" ""
 }

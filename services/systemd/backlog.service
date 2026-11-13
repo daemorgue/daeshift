@@ -1,0 +1,14 @@
+# Written by daeshift --install from services/systemd/backlog.service.
+# Change config.yaml instead: install rewrites or removes this file.
+[Unit]
+Description=Backlog.md board of the @NAME@ project (127.0.0.1:@PORT@)
+
+[Service]
+WorkingDirectory=@FOLDER@
+Environment="PATH=@PATH@"
+ExecStart="@TOOLS@/backlog" browser --no-open --port @PORT@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

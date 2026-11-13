@@ -1,0 +1,14 @@
+# Written by daeshift --install from services/systemd/groma.service.
+# Change config.yaml instead: install rewrites or removes this file.
+[Unit]
+Description=groma map of the @NAME@ repo (port @PORT@, every interface)
+
+[Service]
+WorkingDirectory=@FOLDER@
+Environment="PATH=@PATH@"
+ExecStart="@TOOLS@/groma" web --port @PORT@
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

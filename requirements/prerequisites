@@ -1,0 +1,12 @@
+# Programs daeshift needs but never installs; daeshift --install checks
+# them. Each line: program, minimum version ("-": any), version command.
+bash 3.2 bash --version
+curl - curl --version
+gh - gh --version
+git 2.31 git --version
+jq - jq --version
+node 16.20.2 node --version
+npm - npm --version
+pi - pi --version
+python3 3.11 python3 --version
+tmux - tmux -V

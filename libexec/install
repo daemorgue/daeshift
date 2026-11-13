@@ -1,0 +1,260 @@
+#!/usr/bin/env bash
+
+# install: set up daeshift on this machine. Checks the clone and the
+# prerequisites, lists every change, asks once, then makes the changes:
+# check out the newest release on a fresh clone and create local/.
+# Started by "daeshift --install"; run "install --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
+
+# Every outside program install runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(cat dirname git mkdir)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+
+warn() { echo "[-] $*"; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Checks each program in prerequisites file $1: present, and at least
+# its minimum version. Reports every failure, then fails if any.
+check_prerequisites() {
+  local command_words=()
+  local failed="false"
+  local found
+  local line_rest
+  local minimum
+  local name
+  local output
+
+  if [[ ! -r "$1" ]]; then
+    err "$1 was not found. Check that the clone is complete."
+    return 1
+  fi
+  while read -r name minimum line_rest; do
+    if [[ -z "${name}" || "${name}" == "#"* ]]; then
+      continue
+    fi
+    read -r -a command_words <<<"${line_rest}"
+    if ! command -v "${name}" >/dev/null 2>&1; then
+      if [[ "${minimum}" == "-" ]]; then
+        err "${name} was not found. Install it, then try again."
+      else
+        err "${name} was not found. Install ${name} ${minimum} or later," \
+          "then try again."
+      fi
+      failed="true"
+      continue
+    fi
+    if [[ "${minimum}" == "-" ]]; then
+      continue
+    fi
+    # Run as words, never through a shell, and away from the prompt's
+    # standard input.
+    output="$("${command_words[@]}" 2>&1 </dev/null)"
+    found="unknown"
+    if [[ "${output}" =~ ${VERSION_PATTERN} ]]; then
+      found="${BASH_REMATCH[0]}"
+    fi
+    if [[ "${found}" == "unknown" ]] \
+      || ! version_at_least "${found}" "${minimum}"; then
+      err "${name} ${found} was found; daeshift needs ${name}" \
+        "${minimum} or later."
+      failed="true"
+    fi
+  done < "$1"
+  if [[ "${failed}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  local answer
+  local changes=()
+  local code_dir
+  local daeshift_home="${HOME}/.daeshift"
+  local local_dir
+  local release=""
+  local script_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      *) usage 1 >&2 ;;
+    esac
+    shift
+  done
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+
+  check_dependencies || exit 1
+  script_dir="$(dirname "$0")" || exit 1
+  code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
+  local_dir="${daeshift_home}/local"
+
+  check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
+  release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
+
+  if [[ -n "${release}" ]]; then
+    changes+=("check out release ${release} in ${code_dir}")
+  fi
+  if [[ ! -d "${local_dir}/projects" ]]; then
+    changes+=("create ${local_dir}/projects")
+  fi
+  if [[ ! -f "${local_dir}/config" ]]; then
+    changes+=("write ${local_dir}/config with the line runner=pi")
+  fi
+  if [[ ${#changes[@]} -eq 0 ]]; then
+    good "Nothing to change."
+    exit 0
+  fi
+
+  echo "daeshift will make these changes:"
+  printf '  - %s\n' "${changes[@]}"
+  printf 'Make these changes? [y/N] '
+  read -r answer || answer=""
+  case "${answer}" in
+    [yY]|[yY][eE][sS]) ;;
+    *)
+      warn "Nothing changed."
+      exit 1
+      ;;
+  esac
+
+  if [[ -n "${release}" ]]; then
+    git -C "${code_dir}" -c advice.detachedHead=false checkout --quiet \
+      "${release}" || exit 1
+    good "Checked out ${release}"
+  fi
+  if [[ ! -d "${local_dir}/projects" ]]; then
+    mkdir -p "${local_dir}/projects" || exit 1
+    good "Created ${local_dir}/projects"
+  fi
+  if [[ ! -f "${local_dir}/config" ]]; then
+    echo "runner=pi" > "${local_dir}/config" || exit 1
+    good "Wrote ${local_dir}/config"
+  fi
+}
+
+# Prints the release tag to check out in clone $1, or nothing when the
+# clone is already at a release. A fresh clone on main gets the newest
+# tag. Fails, saying why, for a clone inside local folder $2, a clone
+# with changes, or one neither at a release nor fresh.
+pick_release() {
+  local branch
+  local clone="$1"
+  local local_dir
+  local newest
+  local status
+
+  # Physical paths, so a symbolic link or a trailing / cannot hide a
+  # clone inside local/. A local/ not created yet holds no clone.
+  local_dir="$2"
+  if [[ -d "$2" ]]; then
+    local_dir="$(cd "$2" && pwd -P)" || return 1
+  fi
+  clone="$(cd "${clone}" && pwd -P)" || return 1
+  case "${clone}/" in
+    "${local_dir%/}/"*)
+      err "daeshift is cloned inside $2. Clone it to the folder above" \
+        "local/ instead, then run daeshift --install from there."
+      return 1
+      ;;
+  esac
+  status="$(git -C "${clone}" status --porcelain --untracked-files=normal)" \
+    || return 1
+  if [[ -n "${status}" ]]; then
+    err "${clone} has changes. Commit, stash or remove them, then try" \
+      "again."
+    return 1
+  fi
+  if git -C "${clone}" describe --tags --exact-match HEAD >/dev/null 2>&1
+  then
+    return 0
+  fi
+  branch="$(git -C "${clone}" branch --show-current)" || return 1
+  newest="$(git -C "${clone}" tag --list 'v*' --sort=-v:refname)" \
+    || return 1
+  newest="${newest%%$'\n'*}"
+  if [[ "${branch}" != "main" || -z "${newest}" ]] \
+    || [[ "$(git -C "${clone}" rev-parse HEAD)" \
+      != "$(git -C "${clone}" rev-parse origin/main 2>/dev/null)" ]]; then
+    err "${clone} is not at a release tag. Check one out, such as:" \
+      "git -C ${clone} checkout ${newest:-<tag>}"
+    return 1
+  fi
+  echo "${newest}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: install [OPTIONS]
+
+DESCRIPTION
+    Set up daeshift on this machine: check the clone and the
+    prerequisites, list every change and ask, then make the changes.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+# Answers whether version $1 is at least version $2, comparing each
+# dot-separated number in turn; a missing number counts as 0.
+version_at_least() {
+  local found=()
+  local index=0
+  local minimum=()
+
+  IFS='.' read -r -a found <<<"$1"
+  IFS='.' read -r -a minimum <<<"$2"
+  while [[ ${index} -lt ${#minimum[@]} ]]; do
+    if (( 10#${found[index]:-0} > 10#${minimum[index]} )); then
+      return 0
+    fi
+    if (( 10#${found[index]:-0} < 10#${minimum[index]} )); then
+      return 1
+    fi
+    index=$((index + 1))
+  done
+}
+
+main "$@"

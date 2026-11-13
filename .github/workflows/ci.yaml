@@ -15,7 +15,7 @@ jobs:
           ci/install-tools -q "${RUNNER_TEMP}/tools"
           echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
       - run: >-
-          shellcheck bin/daeshift ci/check-root ci/install-tools
+          shellcheck bin/daeshift ci/check-root ci/install-tools libexec/install
           git/hooks/checks/* git/hooks/pre-commit runners/pi/launch
           tests/*.bats
 

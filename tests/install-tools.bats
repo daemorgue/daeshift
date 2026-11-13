@@ -41,6 +41,18 @@ setup() {
   install_tools="${BATS_TEST_DIRNAME}/../ci/install-tools"
 }
 
+@test "install-tools checks a Linux aarch64 download against its own pin" {
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'if [[ "$1" == "-s" ]]; then echo "Linux"; else echo "aarch64"; fi' \
+    > "${HOME}/bin/uname"
+  chmod +x "${HOME}/bin/uname"
+  run "${install_tools}" "${HOME}/tools"
+  assert_equal "${status}" 1
+  assert_contains "${output}" \
+    "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc"
+}
+
 @test "install-tools stops on a download that does not match its pin" {
   run "${install_tools}" "${HOME}/tools"
   assert_equal "${status}" 1

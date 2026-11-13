@@ -1,0 +1,234 @@
+#!/usr/bin/env bash
+
+# install: set up daeshift on this machine. Checks the clone and the
+# prerequisites, lists every change, asks once, then makes the changes:
+# check out the newest release on a fresh clone and create local/.
+# Started by "daeshift --install"; run "install --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
+
+# Every outside program install runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(dirname git mkdir)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+
+warn() { echo "[-] $*"; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Checks each program in prerequisites file $1: present, and at least
+# its minimum version. Reports every failure, then fails if any.
+check_prerequisites() {
+  local command_line
+  local failed="false"
+  local found
+  local minimum
+  local name
+  local output
+
+  while read -r name minimum command_line; do
+    if [[ -z "${name}" || "${name}" == "#"* ]]; then
+      continue
+    fi
+    if ! command -v "${name}" >/dev/null 2>&1; then
+      err "${name} was not found. Install it with your system's package" \
+        "manager."
+      failed="true"
+      continue
+    fi
+    if [[ "${minimum}" == "-" ]]; then
+      continue
+    fi
+    # The version command is split into words on purpose, never run
+    # through a shell.
+    # shellcheck disable=SC2086
+    output="$(${command_line} 2>&1)"
+    found="unknown"
+    if [[ "${output}" =~ ${VERSION_PATTERN} ]]; then
+      found="${BASH_REMATCH[0]}"
+    fi
+    if [[ "${found}" == "unknown" ]] \
+      || ! version_at_least "${found}" "${minimum}"; then
+      err "${name} ${found} was found; daeshift needs ${name}" \
+        "${minimum} or later."
+      failed="true"
+    fi
+  done < "$1"
+  if [[ "${failed}" == "true" ]]; then
+    return 1
+  fi
+}
+
+main() {
+  local answer
+  local changes=()
+  local code_dir
+  local daeshift_home="${HOME}/.daeshift"
+  local local_dir
+  local release=""
+  local script_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      *) usage 1 >&2 ;;
+    esac
+    shift
+  done
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+
+  check_dependencies || exit 1
+  script_dir="$(dirname "$0")" || exit 1
+  code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
+  local_dir="${daeshift_home}/local"
+
+  release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
+  check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
+
+  if [[ -n "${release}" ]]; then
+    changes+=("check out release ${release} in ${code_dir}")
+  fi
+  if [[ ! -d "${local_dir}/projects" ]]; then
+    changes+=("create ${local_dir}/projects")
+  fi
+  if [[ ! -f "${local_dir}/config" ]]; then
+    changes+=("write ${local_dir}/config with the line runner=pi")
+  fi
+  if [[ ${#changes[@]} -eq 0 ]]; then
+    good "Nothing to change."
+    exit 0
+  fi
+
+  echo "daeshift will make these changes:"
+  printf '  - %s\n' "${changes[@]}"
+  printf 'Make these changes? [y/N] '
+  read -r answer || answer=""
+  if [[ "${answer}" != "y" && "${answer}" != "yes" ]]; then
+    warn "Nothing changed."
+    exit 1
+  fi
+
+  if [[ -n "${release}" ]]; then
+    git -C "${code_dir}" -c advice.detachedHead=false checkout --quiet \
+      "${release}" || exit 1
+    good "Checked out ${release}"
+  fi
+  mkdir -p "${local_dir}/projects" || exit 1
+  if [[ ! -f "${local_dir}/config" ]]; then
+    echo "runner=pi" > "${local_dir}/config" || exit 1
+    good "Wrote ${local_dir}/config"
+  fi
+}
+
+# Prints the release tag to check out in clone $1, or nothing when the
+# clone is already at a release. A fresh clone on main gets the newest
+# tag. Fails, saying why, for a clone inside local folder $2, a clone
+# with changes, or one neither at a release nor fresh.
+pick_release() {
+  local branch
+  local clone="$1"
+  local newest
+
+  case "${clone}/" in
+    "$2/"*)
+      err "daeshift is cloned inside $2. Clone it to the folder above" \
+        "local/ instead, then run daeshift --install from there."
+      return 1
+      ;;
+  esac
+  if [[ -n "$(git -C "${clone}" status --porcelain)" ]]; then
+    err "${clone} has changes. Commit, stash or remove them, then try" \
+      "again."
+    return 1
+  fi
+  if git -C "${clone}" describe --tags --exact-match HEAD >/dev/null 2>&1
+  then
+    return 0
+  fi
+  branch="$(git -C "${clone}" branch --show-current)" || return 1
+  newest="$(git -C "${clone}" tag --list 'v*' --sort=-v:refname)" \
+    || return 1
+  newest="${newest%%$'\n'*}"
+  if [[ "${branch}" != "main" || -z "${newest}" ]] \
+    || [[ "$(git -C "${clone}" rev-parse HEAD)" \
+      != "$(git -C "${clone}" rev-parse origin/main 2>/dev/null)" ]]; then
+    err "${clone} is not at a release tag. Check one out, such as:" \
+      "git -C ${clone} checkout ${newest:-<tag>}"
+    return 1
+  fi
+  echo "${newest}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: install [OPTIONS]
+
+DESCRIPTION
+    Set up daeshift on this machine: check the clone and the
+    prerequisites, list every change and ask, then make the changes.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+# Answers whether version $1 is at least version $2, comparing each
+# dot-separated number in turn; a missing number counts as 0.
+version_at_least() {
+  local found=()
+  local index=0
+  local minimum=()
+
+  IFS='.' read -r -a found <<<"$1"
+  IFS='.' read -r -a minimum <<<"$2"
+  while [[ ${index} -lt ${#minimum[@]} ]]; do
+    if (( 10#${found[index]:-0} > 10#${minimum[index]} )); then
+      return 0
+    fi
+    if (( 10#${found[index]:-0} < 10#${minimum[index]} )); then
+      return 1
+    fi
+    index=$((index + 1))
+  done
+}
+
+main "$@"

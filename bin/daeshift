@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-# daeshift: start an agent session in a project, or list the projects.
+# daeshift: start an agent session in a project, list the projects, or
+# set daeshift up on this machine.
 # Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
 # to ~/.daeshift), and $DAESHIFT_HOME/local/config names the agent tool
 # to start (runner=pi). Run "daeshift --help" for usage.
@@ -54,9 +55,13 @@ list_folders() {
 }
 
 main() {
+  local code_dir
   local daeshift_home="${HOME}/.daeshift"
+  local install="false"
   local list="false"
   local project=""
+  local quiet="false"
+  local script_dir
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -65,6 +70,7 @@ main() {
         break
         ;;
       "-h"|"--help") usage 0 ;;
+      "--install") install="true" ;;
       "--list-projects") list="true" ;;
       "--project")
         if [[ $# -lt 2 ]]; then
@@ -73,8 +79,8 @@ main() {
         project="$2"
         shift
         ;;
-      # daeshift prints only errors and lists, so -q has nothing to hide.
-      "-q"|"--quiet") ;;
+      # Only --install prints progress, so -q is passed on to it.
+      "-q"|"--quiet") quiet="true" ;;
       *) usage 1 >&2 ;;
     esac
     shift
@@ -84,7 +90,14 @@ main() {
   fi
 
   check_dependencies || exit 1
-  if [[ "${list}" == "true" ]]; then
+  if [[ "${install}" == "true" ]]; then
+    script_dir="$(dirname "$0")" || exit 1
+    code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
+    if [[ "${quiet}" == "true" ]]; then
+      exec "${code_dir}/libexec/install" --quiet
+    fi
+    exec "${code_dir}/libexec/install"
+  elif [[ "${list}" == "true" ]]; then
     list_folders "${daeshift_home}/local/projects" || exit 1
   elif [[ -n "${project}" ]]; then
     start_project "${daeshift_home}" "${project}" || exit 1
@@ -159,10 +172,12 @@ usage() {
 Usage: daeshift [OPTIONS]
 
 DESCRIPTION
-    Start an agent session in a project, or list the projects.
+    Start an agent session in a project, list the projects, or set
+    daeshift up on this machine.
 
 OPTIONS
     -h, --help            Display this help message
+        --install         Set daeshift up on this machine, asking first
         --list-projects   List the projects
         --project NAME    Start a session in the project NAME
     -q, --quiet           Show only warnings and errors

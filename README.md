@@ -81,14 +81,13 @@ session in every project. So the root never holds `AGENTS.md`,
    The installer checks the clone and the prerequisites, lists every
    change it will make, and asks before making them. On a fresh clone
    it checks out the newest release. It creates `~/.daeshift/local/`,
-   which git ignores, and installs the pinned tools
-   there. Running it again changes nothing.
+   which git ignores, and installs the pinned tools there. It also
+   turns on daeshift's git hooks for every repo under
+   `~/.daeshift/local/projects/`, with one setting in your global git
+   config. Running it again changes nothing.
 
 3. Add the `PATH` line the installer prints to your shell profile. If
-   git has no name and email yet, set them as the installer says. The
-   installer also turns on daeshift's commit checks for every repo
-   under `~/.daeshift/local/projects/`, with one line in your global git
-   config.
+   git has no name and email yet, set them as the installer says.
 
 4. Add a project. daeshift clones its project repo into
    `local/projects/`, then each code repo the project lists into its

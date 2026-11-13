@@ -71,6 +71,7 @@ setup() {
 
   export HOME="${BATS_TEST_TMPDIR}/home"
   export DAESHIFT_HOME="${HOME}/.daeshift"
+  export GIT_CONFIG_GLOBAL="${HOME}/.gitconfig"
   mkdir -p "${HOME}/bin" "${source}/ci"
   # The stand-ins' own lines must reach their files unexpanded.
   # shellcheck disable=SC2016
@@ -344,7 +345,8 @@ setup() {
 @test "install turns on daeshift's git hooks" {
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 0
-  assert_contains "${output}" "turn on daeshift's git hooks"
+  assert_contains "${output}" \
+    "add the includeIf for ~/.daeshift/local/projects/ to the global"
   # git stores the ~ as written.
   # shellcheck disable=SC2088
   assert_equal \

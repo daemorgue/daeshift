@@ -56,6 +56,7 @@ setup() {
 
   export HOME="${BATS_TEST_TMPDIR}/home"
   export DAESHIFT_HOME="${HOME}/.daeshift"
+  export GIT_CONFIG_GLOBAL="${HOME}/.gitconfig"
   mkdir -p "${DAESHIFT_HOME}/local/projects" \
     "${DAESHIFT_HOME}/local/tools/bin"
   ln -s "$(command -v yq)" "${DAESHIFT_HOME}/local/tools/bin/yq"
@@ -158,6 +159,19 @@ setup() {
     2>/dev/null)" ""
 }
 
+@test "add-project warns when the board's projects differ from repos.yaml" {
+  local project="${BATS_TEST_TMPDIR}/demo.git"
+
+  echo 'projects: ["_project", "site", "old"]' \
+    > "${project}/backlog/config.yml"
+  commit_file "${project}" "board"
+  run "${daeshift}" --add-project "${project}"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Not on the board: blog. On the board only: old."
+  assert_equal "$(cat "${projects}/demo/backlog/config.yml")" \
+    'projects: ["_project", "site", "old"]'
+}
+
 @test "add-project without a URL prints the help and fails" {
   run "${daeshift}" --name demo
   assert_equal "${status}" 1
@@ -194,6 +208,15 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\ndocs\nsite')"
+}
+
+@test "pull compares no board when the project has none" {
+  git -C "${BATS_TEST_TMPDIR}/demo.git" rm --quiet backlog/config.yml
+  commit_file "${BATS_TEST_TMPDIR}/demo.git" "no-board"
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  run "${daeshift}" --quiet --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "${output}" ""
 }
 
 @test "pull creates the map folder behind a link that points at nothing" {
@@ -393,19 +416,6 @@ setup() {
   run "${daeshift}" --project demo --pull
   assert_equal "${status}" 0
   assert_contains "${output}" "daeshift's git hooks are off."
-}
-
-@test "pull warns when the board's projects differ from repos.yaml" {
-  local project="${BATS_TEST_TMPDIR}/demo.git"
-
-  echo 'projects: ["_project", "site", "old"]' \
-    > "${project}/backlog/config.yml"
-  commit_file "${project}" "board"
-  run "${daeshift}" --add-project "${project}"
-  assert_equal "${status}" 0
-  assert_contains "${output}" "Missing: blog. Extra: old."
-  assert_equal "$(cat "${projects}/demo/backlog/config.yml")" \
-    'projects: ["_project", "site", "old"]'
 }
 
 @test "pull with --add-project prints the help and fails" {

@@ -9,9 +9,9 @@ set -o nounset
 set -o pipefail
 
 # The paths every code repo clone keeps out of git (code-repos item 2).
+readonly EXCLUDES=(groma AGENTS.md AGENTS.override.md CLAUDE.md .pi/)
 # The global git setting that turns on daeshift's hooks; install adds it.
 readonly HOOKS_KEY='includeIf.gitdir:~/.daeshift/local/projects/.path'
-readonly EXCLUDES=(groma AGENTS.md AGENTS.override.md CLAUDE.md .pi/)
 readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 readonly OVERRIDE_TEXT="# Instructions for this clone
 
@@ -95,7 +95,8 @@ check_board() {
   done <<<"${projects}"
   if [[ -n "${missing}${extra}" ]]; then
     warn "${board}: the board's projects differ from repos.yaml plus" \
-      "_project. Missing:${missing:- none}. Extra:${extra:- none}."
+      "_project. Not on the board:${missing:- none}. On the board" \
+      "only:${extra:- none}."
   fi
 }
 

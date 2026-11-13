@@ -86,7 +86,7 @@ setup() {
   assert_equal "${status}" 0
   assert_contains "${output}" "check out release v0.2.0"
   assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.2.0"
-  assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=pi"
+  assert_equal "$(cat "${DAESHIFT_HOME}/local/config.yaml")" "runner: pi"
   assert_equal "$(ls -d "${DAESHIFT_HOME}/local/projects")" \
     "${DAESHIFT_HOME}/local/projects"
   assert_contains "$(ls "${DAESHIFT_HOME}/local/tools")" "installed-from"
@@ -96,10 +96,11 @@ setup() {
 
 @test "install keeps an existing config and projects" {
   mkdir -p "${DAESHIFT_HOME}/local/projects/demo"
-  echo "runner=other" > "${DAESHIFT_HOME}/local/config"
+  echo "runner: other" > "${DAESHIFT_HOME}/local/config.yaml"
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 0
-  assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=other"
+  assert_equal "$(cat "${DAESHIFT_HOME}/local/config.yaml")" \
+    "runner: other"
   assert_equal "$(ls "${DAESHIFT_HOME}/local/projects")" "demo"
 }
 

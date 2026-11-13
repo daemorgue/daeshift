@@ -3,8 +3,8 @@
 # daeshift: start an agent session in a project, list the projects, or
 # set up, update or roll back daeshift on this machine.
 # Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
-# to ~/.daeshift), and $DAESHIFT_HOME/local/config names the agent tool
-# to start (runner=pi). Run "daeshift --help" for usage.
+# to ~/.daeshift), and $DAESHIFT_HOME/local/config.yaml names the agent
+# tool to start (runner: pi). Run "daeshift --help" for usage.
 
 set -o nounset
 set -o pipefail
@@ -125,26 +125,29 @@ main() {
   fi
 }
 
-# Prints the runner named in config file $1 (a "runner=NAME" line). The
-# file is read as data, never run. Fails if the file or the line is
-# missing, or the name is not a plain name.
+# Prints the runner named by the runner key of YAML file $1, read with
+# the pinned yq $2. The file is read as data, never run. Fails if the
+# file, yq or the key is missing, yq cannot read the file, or the name
+# is not a plain name.
 read_runner() {
   local config="$1"
-  local key
-  local runner=""
-  local value
+  local runner
+  local yq="$2"
 
   if [[ ! -f "${config}" ]]; then
-    err "${config} does not exist. Create it with the line: runner=pi"
+    err "${config} does not exist. Create it with the line: runner: pi"
     return 1
   fi
-  while IFS='=' read -r key value || [[ -n "${key}" ]]; do
-    if [[ "${key}" == "runner" ]]; then
-      runner="${value}"
-    fi
-  done < "${config}"
+  if [[ ! -x "${yq}" ]]; then
+    err "${yq} was not found. Run daeshift --install."
+    return 1
+  fi
+  if ! runner="$("${yq}" '.runner // ""' "${config}")"; then
+    err "${config} could not be read. Fix it, such as: runner: pi"
+    return 1
+  fi
   if [[ -z "${runner}" ]]; then
-    err "${config} has no runner= line. Add one, such as: runner=pi"
+    err "${config} has no runner. Add one, such as: runner: pi"
     return 1
   fi
   if [[ ! "${runner}" =~ ${NAME_PATTERN} ]]; then
@@ -172,7 +175,8 @@ start_project() {
     list_folders "${daeshift_home}/local/projects" >&2
     return 1
   fi
-  runner="$(read_runner "${daeshift_home}/local/config")" || return 1
+  runner="$(read_runner "${daeshift_home}/local/config.yaml" \
+    "${daeshift_home}/local/tools/bin/yq")" || return 1
   script_dir="$(dirname "$0")" || return 1
   code_dir="$(cd "${script_dir}/.." && pwd)" || return 1
   launch="${code_dir}/runners/${runner}/launch"
@@ -205,7 +209,7 @@ OPTIONS
         --update          Check out the newest release, asking first
 
 ENVIRONMENT
-    DAESHIFT_HOME   Where local/config and local/projects/ live
+    DAESHIFT_HOME   Where local/config.yaml and local/projects/ live
                     (default: ~/.daeshift)
 EOF
   exit "$1"

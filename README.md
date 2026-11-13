@@ -109,8 +109,8 @@ daemorgue
 $ daeshift --project daemorgue
 ```
 
-`daeshift --project` starts the agent tool named by `runner=` in
-`~/.daeshift/local/config` (only `pi` so far), in the project's folder,
+`daeshift --project` starts the agent tool named by `runner:` in
+`~/.daeshift/local/config.yaml` (only `pi` so far), in the project's folder,
 with daeshift's instructions, skills and prompts. You can set
 `DAESHIFT_HOME` to keep `local/` somewhere other than `~/.daeshift`, but
 daeshift's git hooks then don't run, because they only look in

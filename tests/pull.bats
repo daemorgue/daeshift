@@ -155,6 +155,16 @@ setup() {
   assert_contains "${output}" "Usage: daeshift"
 }
 
+@test "pull adds a newline before the exclude lines when one is missing" {
+  local exclude="${projects}/demo/repositories/site/.git/info/exclude"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  printf '%s' "mine" > "${exclude}"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(head -n 2 "${exclude}")" "$(printf 'mine\ngroma')"
+}
+
 @test "pull adds only the missing exclude lines" {
   local exclude="${projects}/demo/repositories/site/.git/info/exclude"
 
@@ -175,6 +185,16 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\ndocs\nsite')"
+}
+
+@test "pull creates the map folder behind a link that points at nothing" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm -r "${projects}/demo/maps/site"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "site has no map yet."
+  assert_equal "$(ls -d "${projects}/demo/maps/site")" \
+    "${projects}/demo/maps/site"
 }
 
 @test "pull fails for a project that does not exist" {
@@ -284,6 +304,13 @@ setup() {
   run "${daeshift}" --project demo --pull
   assert_equal "${status}" 0
   assert_contains "${output}" "Set up ${site}: groma link"
+}
+
+@test "pull sets up nothing on a clone already set up" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(printf '%s\n' "${output}" | grep --count "Set up")" "0"
 }
 
 @test "pull skips a clone on another branch" {

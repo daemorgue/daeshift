@@ -97,8 +97,10 @@ session in every project. So the root never holds `AGENTS.md`,
 
 4. Add a project. daeshift clones its project repo into
    `local/projects/`, then each code repo the project lists into its
-   `repositories/` folder. `--name` sets the project's name; without
-   it, the name comes from the URL:
+   `repositories/` folder, and sets each clone up: git ignores the files
+   agent tools write there, and a `groma` link points to the repo's
+   map. `--name` sets the project's name; without it, the name comes
+   from the URL:
 
    ```
    $ daeshift --add-project git@github.com:daemorgue/daemorgue-context.git --name daemorgue

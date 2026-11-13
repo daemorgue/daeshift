@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
-# pull: clone a project and every code repo it lists, without asking.
-# Started by "daeshift --add-project URL"; run "pull --help" for usage.
+# pull: clone a project and its code repos, or fast-forward them. Never
+# asks, makes a merge commit, rebases or resets. Started by "daeshift
+# --add-project URL" or "daeshift --project NAME --pull"; run "pull
+# --help" for usage.
 
 set -o nounset
 set -o pipefail
@@ -12,7 +14,9 @@ readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 # missing one before any work starts.
 dependencies=(git)
 quiet="false"
-# Fail instead of asking for a password: pull never asks.
+# Set by update_clone when it leaves a clone as it is.
+skipped="false"
+# Fail instead of asking for a password over HTTPS: pull never asks.
 export GIT_TERMINAL_PROMPT=0
 
 ### Helpers begin
@@ -36,7 +40,7 @@ add_project() {
     return 1
   fi
   if [[ -e "$2/$3" ]]; then
-    err "$2/$3 already exists. Choose another name with --name."
+    err "$2/$3 already exists. Pull it with: daeshift --project $3 --pull"
     return 1
   fi
   if ! git ls-remote --quiet "$1" HEAD >/dev/null; then
@@ -108,12 +112,20 @@ main() {
         name="$2"
         shift
         ;;
+      "--project")
+        if [[ $# -lt 2 ]]; then
+          usage 1 >&2
+        fi
+        project="$2"
+        shift
+        ;;
       "-q"|"--quiet") quiet="true" ;;
       *) usage 1 >&2 ;;
     esac
     shift
   done
-  if [[ -z "${url}" ]]; then
+  if [[ -n "${url}" && -n "${project}" ]] \
+    || [[ -z "${url}" && ( -z "${project}" || -n "${name}" ) ]]; then
     usage 1 >&2
   fi
   if [[ -n "${DAESHIFT_HOME:-}" ]]; then
@@ -128,29 +140,43 @@ main() {
     exit 1
   fi
 
-  project="${name}"
-  if [[ -z "${project}" ]]; then
-    # The URL's last part, after a / or a :, without .git.
-    project="${url%/}"
-    project="${project##*/}"
-    project="${project##*:}"
-    project="${project%.git}"
+  if [[ -n "${url}" ]]; then
+    project="${name}"
+    if [[ -z "${project}" ]]; then
+      # The URL's last part, after a / or a :, without .git.
+      project="${url%/}"
+      project="${project##*/}"
+      project="${project##*:}"
+      project="${project%.git}"
+    fi
+    add_project "${url}" "${projects_dir}" "${project}" || exit 1
+  else
+    if [[ ! "${project}" =~ ${NAME_PATTERN} \
+      || ! -d "${projects_dir}/${project}" ]]; then
+      err "No project '${project}' in ${projects_dir}. Add it with:" \
+        "daeshift --add-project URL"
+      exit 1
+    fi
+    update_clone "${projects_dir}/${project}" || failed="true"
   fi
-  add_project "${url}" "${projects_dir}" "${project}" || exit 1
 
   pull_repos "${projects_dir}/${project}" "${yq}" || failed="true"
   if [[ "${failed}" == "true" ]]; then
-    err "Some repos of ${project} were not cloned. Clone them as" \
-      "reported above."
+    err "Some repos of ${project} were not pulled. Fix what is reported" \
+      "above, then run: daeshift --project ${project} --pull"
     exit 1
   fi
-  good "Project ${project} is added. Start a session with:" \
-    "daeshift --project ${project}"
+  if [[ "${skipped}" == "true" ]]; then
+    good "Project ${project} is pulled, except the skipped repos above."
+  else
+    good "Project ${project} is up to date."
+  fi
+  good "Start a session with: daeshift --project ${project}"
 }
 
-# Clones every repo that .config/repos.yaml in project folder $1 lists,
-# read with the pinned yq $2. Goes on after a repo fails; fails if any
-# did.
+# Clones or fast-forwards every repo that .config/repos.yaml in project
+# folder $1 lists, read with the pinned yq $2. Goes on after a repo
+# fails; fails if any did.
 pull_repos() {
   local entries
   local failed="false"
@@ -169,6 +195,8 @@ pull_repos() {
     if [[ ! "${name}" =~ ${NAME_PATTERN} ]]; then
       warn "$1/.config/repos.yaml: '${name}' is not a plain repo name."
       failed="true"
+    elif [[ -d "$1/repositories/${name}" ]]; then
+      update_clone "$1/repositories/${name}" || failed="true"
     else
       clone_repo "${url}" "$1/repositories/${name}" || failed="true"
     fi
@@ -178,20 +206,86 @@ pull_repos() {
   fi
 }
 
+# Fast-forwards clone $1 to its origin's default branch. Skips, with a
+# warning, a clone with changes or on another branch, and sets skipped.
+# Warns and fails when the folder is not a clone, or fetching or the
+# fast-forward fails.
+update_clone() {
+  local ancestor
+  local before
+  local branch
+  local default
+  local folder
+  local status
+  local top
+
+  # git -C on a plain folder would act on the repo above it.
+  folder="$(cd "$1" && pwd -P)" || return 1
+  top="$(git -C "$1" rev-parse --show-toplevel 2>/dev/null)"
+  if [[ "${top}" != "${folder}" ]]; then
+    warn "$1 is not a git clone. Move it away, then pull again."
+    return 1
+  fi
+  status="$(git -C "$1" status --porcelain)" || return 1
+  if [[ -n "${status}" ]]; then
+    warn "$1 skipped: it has changes. Commit or stash them, then pull" \
+      "again."
+    skipped="true"
+    return 0
+  fi
+  if ! git -C "$1" fetch --quiet origin; then
+    warn "Fetching $1 failed."
+    return 1
+  fi
+  if ! default="$(git -C "$1" symbolic-ref --quiet --short \
+    refs/remotes/origin/HEAD)"; then
+    warn "$1 has no default branch for origin. Set it with: git -C $1" \
+      "remote set-head origin --auto"
+    return 1
+  fi
+  default="${default#origin/}"
+  branch="$(git -C "$1" branch --show-current)" || return 1
+  if [[ "${branch}" != "${default}" ]]; then
+    warn "$1 skipped: it is on '${branch:-a detached HEAD}', not" \
+      "'${default}'."
+    skipped="true"
+    return 0
+  fi
+  git -C "$1" merge-base --is-ancestor HEAD "origin/${default}"
+  ancestor=$?
+  if [[ ${ancestor} -eq 1 ]]; then
+    warn "$1 could not be fast-forwarded: it has commits that" \
+      "origin/${default} lacks."
+    return 1
+  fi
+  if [[ ${ancestor} -ne 0 ]]; then
+    return 1
+  fi
+  before="$(git -C "$1" rev-parse HEAD)" || return 1
+  # --no-overwrite-ignore keeps an ignored local file, such as
+  # AGENTS.override.md, that the upstream starts to track.
+  git -C "$1" merge --ff-only --no-overwrite-ignore --quiet \
+    "origin/${default}" || return 1
+  if [[ "$(git -C "$1" rev-parse HEAD)" != "${before}" ]]; then
+    good "Fast-forwarded $1"
+  fi
+}
+
 # Prints the help text, then exits with the code it is given.
 usage() {
   cat <<'EOF'
-Usage: pull [OPTIONS] --add URL [--name NAME]
+Usage: pull [OPTIONS] (--add URL [--name NAME] | --project NAME)
 
 DESCRIPTION
-    Start tracking a project on this machine: clone its project repo,
-    then every code repo it lists.
+    Start tracking a project on this machine, or bring one and its code
+    repos up to date by fast-forwarding them.
 
 OPTIONS
         --add URL        Clone the project repo at URL, then its repos
     -h, --help           Display this help message
         --name NAME      With --add: the project's folder name (default:
                          the URL's last part without .git)
+        --project NAME   Pull the project NAME and its repos
     -q, --quiet          Show only warnings and errors
 EOF
   exit "$1"

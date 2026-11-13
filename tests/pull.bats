@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
-# Tests for daeshift --add-project (libexec/pull). Each test gets its own home folder with a
+# Tests for daeshift --add-project and --project NAME --pull
+# (libexec/pull). Each test gets its own home folder with a
 # DAESHIFT_HOME holding local/projects/ and the yq on PATH as the pinned
 # yq (it must be mikefarah's, as CI's pinned tools provide), and three
 # source repos on main: demo.git, a project repo that ignores
@@ -70,7 +71,7 @@ setup() {
 @test "add-project clones the project and every repo it lists" {
   run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
   assert_equal "${status}" 0
-  assert_contains "${output}" "Project demo is added."
+  assert_contains "${output}" "Project demo is up to date."
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\nsite')"
 }
@@ -94,7 +95,7 @@ setup() {
   mkdir "${projects}/demo"
   run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
   assert_equal "${status}" 1
-  assert_contains "${output}" "already exists. Choose another name"
+  assert_contains "${output}" "already exists. Pull it with:"
   assert_equal "$(ls "${projects}/demo")" ""
 }
 
@@ -110,13 +111,143 @@ setup() {
   run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
   assert_equal "${status}" 1
   assert_contains "${output}" "Cloning ${BATS_TEST_TMPDIR}/gone into"
-  assert_contains "${output}" "Some repos of demo were not cloned."
+  assert_contains "${output}" "Some repos of demo were not pulled."
   assert_equal "$(ls "${projects}/demo/repositories")" \
     "$(printf 'blog\nsite')"
 }
 
 @test "add-project without a URL prints the help and fails" {
   run "${daeshift}" --name demo
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Usage: daeshift"
+}
+
+@test "pull clones a repo the project lists since the last pull" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  git init --quiet --initial-branch=main "${BATS_TEST_TMPDIR}/docs"
+  commit_file "${BATS_TEST_TMPDIR}/docs" "first"
+  list_repos site blog docs
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(ls "${projects}/demo/repositories")" \
+    "$(printf 'blog\ndocs\nsite')"
+}
+
+@test "pull fails for a project that does not exist" {
+  run "${daeshift}" --project nowhere --pull
+  assert_equal "${status}" 1
+  assert_contains "${output}" "No project 'nowhere' in ${projects}."
+}
+
+@test "pull fast-forwards the project and its repos" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  commit_file "${BATS_TEST_TMPDIR}/demo.git" "board"
+  commit_file "${BATS_TEST_TMPDIR}/site" "feature"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Fast-forwarded ${projects}/demo"
+  assert_equal "$(cat "${projects}/demo/board")" "board"
+  assert_equal "$(cat "${projects}/demo/repositories/site/feature")" \
+    "feature"
+}
+
+@test "pull keeps an ignored file that the upstream starts to track" {
+  local site="${projects}/demo/repositories/site"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  echo "AGENTS.md" >> "${site}/.git/info/exclude"
+  echo "mine" > "${site}/AGENTS.md"
+  commit_file "${BATS_TEST_TMPDIR}/site" "AGENTS.md"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 1
+  assert_equal "$(cat "${site}/AGENTS.md")" "mine"
+}
+
+@test "pull reports a clone it cannot fast-forward and pulls the rest" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  commit_file "${projects}/demo/repositories/site" "local"
+  commit_file "${BATS_TEST_TMPDIR}/site" "upstream"
+  commit_file "${BATS_TEST_TMPDIR}/blog" "upstream"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 1
+  assert_contains "${output}" "repositories/site could not be fast-forwarded"
+  assert_equal "$(ls "${projects}/demo/repositories/site/upstream" \
+    2>/dev/null)" ""
+  assert_equal "$(cat "${projects}/demo/repositories/blog/upstream")" \
+    "upstream"
+}
+
+@test "pull reports a clone it cannot fetch and pulls the rest" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  mv "${BATS_TEST_TMPDIR}/site" "${BATS_TEST_TMPDIR}/moved"
+  commit_file "${BATS_TEST_TMPDIR}/blog" "upstream"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Fetching ${projects}/demo/repositories/site"
+  assert_equal "$(cat "${projects}/demo/repositories/blog/upstream")" \
+    "upstream"
+}
+
+@test "pull reports a repo folder that is not a clone" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm -rf "${projects}/demo/repositories/site"
+  mkdir "${projects}/demo/repositories/site"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 1
+  assert_contains "${output}" "repositories/site is not a git clone."
+  assert_equal "$(printf '%s\n' "${output}" \
+    | grep --count "Fast-forwarded")" "0"
+}
+
+@test "pull says nothing on success with --quiet" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  commit_file "${BATS_TEST_TMPDIR}/site" "upstream"
+  run "${daeshift}" --quiet --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "${output}" ""
+}
+
+@test "pull skips a clone on another branch" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  git -C "${projects}/demo/repositories/site" switch --quiet \
+    --create tasks/task-1-work
+  commit_file "${BATS_TEST_TMPDIR}/site" "upstream"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "skipped: it is on 'tasks/task-1-work'"
+  assert_contains "${output}" "is pulled, except the skipped repos above."
+  assert_equal "$(git -C "${projects}/demo/repositories/site" \
+    branch --show-current)" "tasks/task-1-work"
+}
+
+@test "pull skips a clone with a detached HEAD" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  git -C "${projects}/demo/repositories/site" switch --quiet --detach
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "skipped: it is on 'a detached HEAD'"
+}
+
+@test "pull skips a clone with changes" {
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  echo "draft" > "${projects}/demo/repositories/site/draft"
+  commit_file "${BATS_TEST_TMPDIR}/site" "upstream"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_contains "${output}" "repositories/site skipped: it has changes."
+  assert_equal "$(cat "${projects}/demo/repositories/site/draft")" "draft"
+  assert_equal "$(ls "${projects}/demo/repositories/site/upstream" \
+    2>/dev/null)" ""
+}
+
+@test "pull with --add-project prints the help and fails" {
+  run "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git" --pull
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Usage: daeshift"
+}
+
+@test "pull without --project prints the help and fails" {
+  run "${daeshift}" --pull
   assert_equal "${status}" 1
   assert_contains "${output}" "Usage: daeshift"
 }

@@ -104,6 +104,10 @@ session in every project. So the root never holds `AGENTS.md`,
    $ daeshift --add-project git@github.com:daemorgue/daemorgue-context.git --name daemorgue
    ```
 
+   Later, `daeshift --project daemorgue --pull` brings the project and
+   its code repos up to date. It only fast-forwards: a repo with
+   changes or on another branch is skipped and left as it is.
+
 ## How to start a session
 
 ```

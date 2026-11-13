@@ -11,7 +11,8 @@
 # "demo" listing and cloning the repo "site", the yq on PATH as the
 # pinned yq (it must be mikefarah's, as CI's pinned tools provide), and
 # stand-ins for node, loginctl (Linger from ${HOME}/linger), uname
-# (Linux) and systemctl (records each call in ${HOME}/systemctl-calls).
+# (Linux) and systemctl (records each call in ${HOME}/systemctl-calls;
+# is-enabled fails while ${HOME}/disabled exists).
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -52,7 +53,9 @@ set_up_services() {
   # The stand-ins' own lines must reach their files unexpanded.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/usr/bin/env bash' \
-    'echo "$*" >> "${HOME}/systemctl-calls"' > "${HOME}/bin/systemctl"
+    'echo "$*" >> "${HOME}/systemctl-calls"' \
+    '[[ "$3" != "is-enabled" || ! -f "${HOME}/disabled" ]]' \
+    > "${HOME}/bin/systemctl"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/usr/bin/env bash' 'cat "${HOME}/linger"' \
     > "${HOME}/bin/loginctl"
@@ -149,7 +152,8 @@ setup() {
   run "${daeshift}" --install </dev/null
   assert_equal "${status}" 0
   assert_contains "${output}" "Nothing to change."
-  assert_equal "$(ls "${HOME}/systemctl-calls" 2>/dev/null)" ""
+  assert_equal "$(cat "${HOME}/systemctl-calls")" \
+    "--user --quiet is-enabled backlog-demo.service"
 }
 
 @test "install leaves no stamp when a tool fails to install" {
@@ -216,6 +220,7 @@ setup() {
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 1
   assert_contains "${output}" "there is no project 'other'"
+  assert_equal "$(ls "${HOME}/.config/systemd/user" 2>/dev/null)" ""
 }
 
 @test "install refuses a repo not listed in the project's repos.yaml" {
@@ -259,6 +264,7 @@ setup() {
   set_up_services "  demo:" "    board: 4748" "    repos:" \
     "      site: 4747"
   "${daeshift}" --install <<<"y"
+  echo "[Unit]" > "${HOME}/.config/systemd/user/other.service"
   printf '%s\n' "runner: pi" "projects:" "  demo:" "    board: 4748" \
     > "${DAESHIFT_HOME}/local/config.yaml"
   run "${daeshift}" --install <<<"y"
@@ -266,7 +272,8 @@ setup() {
   assert_contains "${output}" "remove service groma-demo-site.service"
   assert_contains "$(cat "${HOME}/systemctl-calls")" \
     "--user --quiet disable --now groma-demo-site.service"
-  assert_equal "$(ls "${HOME}/.config/systemd/user")" "backlog-demo.service"
+  assert_equal "$(ls "${HOME}/.config/systemd/user")" \
+    "$(printf 'backlog-demo.service\nother.service')"
 }
 
 @test "install reports every missing or old prerequisite before changing" {
@@ -308,8 +315,11 @@ setup() {
   assert_contains "${unit}" "Environment=\"PATH=${local_dir}/tools/node/"
   assert_contains "${unit}" ":${HOME}/bin:/usr/local/bin:/usr/bin:/bin\""
   assert_contains "${unit}" "/node_modules/.bin/groma\" web --port 4747"
-  assert_contains "$(cat "${HOME}/.config/systemd/user/backlog-demo.service")" \
-    "WorkingDirectory=${local_dir}/projects/demo"$'\n'
+  unit="$(cat "${HOME}/.config/systemd/user/backlog-demo.service")"
+  assert_contains "${unit}" "WorkingDirectory=${local_dir}/projects/demo"$'\n'
+  assert_contains "${unit}" "Environment=\"PATH=${local_dir}/tools/node/"
+  assert_contains "${unit}" \
+    "/node_modules/.bin/backlog\" browser --no-open --port 4748"
   assert_contains "$(cat "${HOME}/systemctl-calls")" \
     "--user restart backlog-demo.service"
 }
@@ -321,6 +331,15 @@ setup() {
   assert_equal "${status}" 0
   assert_contains "${output}" "they need systemd, which this machine lacks"
   assert_equal "$(ls "${HOME}/.config/systemd/user" 2>/dev/null)" ""
+}
+
+@test "install starts a configured service that is not enabled" {
+  set_up_services "  demo:" "    board: 4748"
+  "${daeshift}" --install <<<"y"
+  touch "${HOME}/disabled"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "start service backlog-demo.service"
 }
 
 @test "install updates a service whose port changed" {
@@ -340,6 +359,7 @@ setup() {
   set_up_services "  demo:" "    board: 4748"
   echo "no" > "${HOME}/linger"
   run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
   assert_contains "${output}" "sudo loginctl enable-linger"
 }
 
@@ -394,6 +414,15 @@ setup() {
   assert_equal "${status}" 0
   assert_contains "${output}" "check out release v0.3.0"
   assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.3.0"
+}
+
+@test "update leaves services for the run after a release" {
+  set_up_services "  demo:" "    board: 4748"
+  git -C "${BATS_TEST_TMPDIR}/source" tag v0.3.0
+  run "${daeshift}" --update <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Run daeshift --install again to set up"
+  assert_equal "$(ls "${HOME}/.config/systemd/user" 2>/dev/null)" ""
 }
 
 @test "update moves a fresh clone to a release made after the clone" {

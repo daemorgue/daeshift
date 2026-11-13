@@ -29,10 +29,11 @@ readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 # version needed.
 dependencies=(cat cp dirname git grep id ln mkdir rm shasum uname)
 quiet="false"
-# Filled by plan_services: the changes to list, the units to write with
-# their text, and the units daeshift wrote that config.yaml no longer
-# asks for.
+# Filled by plan_services: the changes to list, whether config.yaml
+# asks for any service, the units to write with their text, and the
+# units daeshift wrote that config.yaml no longer asks for.
 service_changes=()
+services_configured="false"
 stale_units=()
 unit_names=()
 unit_texts=()
@@ -252,7 +253,7 @@ main() {
   local units_dir="${HOME}/.config/systemd/user"
   local update="false"
   local wanted=""
-  local yq_missing="false"
+  local services_later="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -284,6 +285,9 @@ main() {
     wanted="newest"
   fi
 
+  # bash 5.2 replaces & in ${text//x/y} with the match; render_unit needs
+  # every path as written. bash 3.2 lacks the option.
+  shopt -u patsub_replacement 2>/dev/null
   check_dependencies || exit 1
   script_dir="$(dirname "$0")" || exit 1
   code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
@@ -319,13 +323,15 @@ main() {
   if [[ -n "${release}" ]] || ! tools_current "${code_dir}" "${stamp}"; then
     changes+=("install the pinned tools into ${local_dir}/tools")
   fi
-  # Services are read with the pinned yq, so a config that comes before
-  # the tools waits for the next run.
-  if [[ -f "${local_dir}/config.yaml" \
-    && ! -x "${local_dir}/tools/bin/yq" ]]; then
-    yq_missing="true"
+  # Services are read with the pinned yq and filled in from the checked
+  # out templates, so a config that comes before the tools or a release
+  # waits for the next run.
+  if [[ -f "${local_dir}/config.yaml" ]] \
+    && [[ -n "${release}" || ! -x "${local_dir}/tools/bin/yq" ]]; then
+    services_later="true"
+  elif ! plan_services "${code_dir}" "${local_dir}" "${units_dir}"; then
+    exit 1
   fi
-  plan_services "${code_dir}" "${local_dir}" "${units_dir}" || exit 1
   if [[ ${#service_changes[@]} -gt 0 ]]; then
     changes+=("${service_changes[@]}")
   fi
@@ -369,7 +375,7 @@ main() {
   if [[ ${#service_changes[@]} -gt 0 ]]; then
     apply_services "${units_dir}" || exit 1
   fi
-  if [[ "${yq_missing}" == "true" ]]; then
+  if [[ "${services_later}" == "true" ]]; then
     warn "Run daeshift --install again to set up the services in" \
       "${local_dir}/config.yaml, if it has any."
   fi
@@ -484,7 +490,8 @@ plan_services() {
     err "${config} could not be read. Fix it, then try again."
     return 1
   fi
-  if [[ "$(uname -s)" != "Linux" ]]; then
+  if [[ "$(uname -s)" != "Linux" ]] \
+    || ! command -v systemctl >/dev/null 2>&1; then
     if [[ -n "${entries}" ]]; then
       warn "${config} sets services, but they need systemd, which this" \
         "machine lacks; none is set up."
@@ -528,10 +535,13 @@ plan_services() {
         failed="true"
         continue
       fi
-      if [[ "$(cat "${unit}")" == "${text}" ]]; then
+      if [[ "$(cat "${unit}")" != "${text}" ]]; then
+        service_changes+=("update service ${name}")
+      elif ! systemctl --user --quiet is-enabled "${name}"; then
+        service_changes+=("start service ${name}")
+      else
         continue
       fi
-      service_changes+=("update service ${name}")
     else
       service_changes+=("set up service ${name} on port ${port}")
     fi
@@ -553,17 +563,14 @@ plan_services() {
       stale_units+=("${name}")
     fi
   done
-  if [[ "${wanted}" != " " \
-    && "$(loginctl show-user "$(id -un)" --property=Linger --value)" \
-      != "yes" ]]; then
-    warn "Services stop when you log out and do not start at boot. Keep" \
-      "them running with: sudo loginctl enable-linger $(id -un)"
+  if [[ "${wanted}" != " " ]]; then
+    services_configured="true"
   fi
 }
 
 # Prints the lines to add by hand that this machine still lacks: the
-# PATH folders from code folder $1 and local folder $2, and a git
-# identity.
+# PATH folders from code folder $1 and local folder $2, a git identity,
+# and linger for the services.
 print_next_steps() {
   local folders="$1/bin:$2/tools/bin:$2/tools/node/node_modules/.bin"
 
@@ -574,6 +581,12 @@ print_next_steps() {
         "export PATH=\"${folders}:\${PATH}\""
       ;;
   esac
+  if [[ "${services_configured}" == "true" \
+    && "$(loginctl show-user "$(id -un)" --property=Linger --value)" \
+      != "yes" ]]; then
+    warn "Services stop when you log out and do not start at boot. Keep" \
+      "them running with: sudo loginctl enable-linger $(id -un)"
+  fi
   if [[ -z "$(git config --global user.name)" \
     || -z "$(git config --global user.email)" ]]; then
     warn "git has no identity yet: git config --global user.name" \
@@ -583,16 +596,22 @@ print_next_steps() {
 
 # Prints unit template $1 filled in for name $2, working folder $3 and
 # port $4, with the pinned tools of local folder $5 and node on PATH.
+# A % in a path is doubled, as systemd reads %x as a specifier.
 render_unit() {
+  local folder="${3//%/%%}"
+  local local_dir="${5//%/%%}"
   local node
   local path
   local text
-  local tools="$5/tools/node/node_modules/.bin"
+  local tools
 
   node="$(command -v node)" || return 1
-  path="${tools}:$5/tools/bin:${node%/*}:/usr/local/bin:/usr/bin:/bin"
+  node="${node//%/%%}"
+  tools="${local_dir}/tools/node/node_modules/.bin"
+  path="${tools}:${local_dir}/tools/bin:${node%/*}:/usr/local/bin:/usr/bin"
+  path+=":/bin"
   text="$(cat "$1")" || return 1
-  text="${text//@FOLDER@/$3}"
+  text="${text//@FOLDER@/${folder}}"
   text="${text//@NAME@/$2}"
   text="${text//@PATH@/${path}}"
   text="${text//@PORT@/$4}"

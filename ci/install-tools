@@ -5,7 +5,8 @@
 # SHA-256 recorded below, and bats is cloned at a fixed commit. Used by
 # CI and by the installer. Run "install-tools --help" for usage.
 #
-# Pinned downloads exist for Linux x86_64 and macOS arm64 only.
+# Pinned downloads exist for Linux x86_64, Linux aarch64 and macOS
+# arm64 only.
 #
 # Updating a pin: change its version, then its commit or SHA-256 values.
 # yq publishes SHA-256 values in its release's "checksums" file;
@@ -17,11 +18,13 @@ set -o pipefail
 
 readonly BATS_COMMIT="eb7f42f8d608ac693d7a4b67474f6714ea68cfc5" # v1.14.0
 readonly BATS_REPO="https://github.com/bats-core/bats-core.git"
-readonly SHELLCHECK_SHA256_DARWIN="339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
-readonly SHELLCHECK_SHA256_LINUX="b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
+readonly SHELLCHECK_SHA256_DARWIN_ARM64="339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f"
+readonly SHELLCHECK_SHA256_LINUX_AARCH64="68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc"
+readonly SHELLCHECK_SHA256_LINUX_X86_64="b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6"
 readonly SHELLCHECK_VERSION="v0.11.0"
-readonly YQ_SHA256_DARWIN="a2aebb93b5bdcb61bb76f630e42a0ef6a3ee10842a6516cd7b9e4080786ec593"
-readonly YQ_SHA256_LINUX="129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973"
+readonly YQ_SHA256_DARWIN_ARM64="a2aebb93b5bdcb61bb76f630e42a0ef6a3ee10842a6516cd7b9e4080786ec593"
+readonly YQ_SHA256_LINUX_AARCH64="89f69310b61b68d1245065a1241d1fc843f7a36cd6103ffd77ad987613bd1b67"
+readonly YQ_SHA256_LINUX_X86_64="129534601871538efe0ba4c5e62a34fb1d5f469bcb975c4fddeb467d82974973"
 readonly YQ_VERSION="v4.54.3"
 
 # Every outside program install-tools runs. check_dependencies reports
@@ -103,18 +106,33 @@ install_bats() {
   good "bats ${BATS_COMMIT} installed"
 }
 
-# Installs ShellCheck for platform $2 ("linux" or "darwin") into $1/bin.
+# Installs ShellCheck for platform $2, as printed by pick_platform,
+# into $1/bin.
 install_shellcheck() {
   local archive
   local dir="$1"
-  local expected="${SHELLCHECK_SHA256_LINUX}"
-  local name="linux.x86_64"
+  local expected
+  local name
   local url
 
-  if [[ "$2" == "darwin" ]]; then
-    expected="${SHELLCHECK_SHA256_DARWIN}"
-    name="darwin.aarch64"
-  fi
+  case "$2" in
+    "darwin-arm64")
+      expected="${SHELLCHECK_SHA256_DARWIN_ARM64}"
+      name="darwin.aarch64"
+      ;;
+    "linux-aarch64")
+      expected="${SHELLCHECK_SHA256_LINUX_AARCH64}"
+      name="linux.aarch64"
+      ;;
+    "linux-x86_64")
+      expected="${SHELLCHECK_SHA256_LINUX_X86_64}"
+      name="linux.x86_64"
+      ;;
+    *)
+      err "ShellCheck has no pinned download for $2."
+      return 1
+      ;;
+  esac
   archive="${dir}/shellcheck.tar.gz"
   url="https://github.com/koalaman/shellcheck/releases/download"
   url="${url}/${SHELLCHECK_VERSION}"
@@ -131,17 +149,31 @@ install_shellcheck() {
   good "ShellCheck ${SHELLCHECK_VERSION} installed"
 }
 
-# Installs yq for platform $2 ("linux" or "darwin") into $1/bin.
+# Installs yq for platform $2, as printed by pick_platform, into $1/bin.
 install_yq() {
   local dir="$1"
-  local expected="${YQ_SHA256_LINUX}"
-  local name="linux_amd64"
+  local expected
+  local name
   local url
 
-  if [[ "$2" == "darwin" ]]; then
-    expected="${YQ_SHA256_DARWIN}"
-    name="darwin_arm64"
-  fi
+  case "$2" in
+    "darwin-arm64")
+      expected="${YQ_SHA256_DARWIN_ARM64}"
+      name="darwin_arm64"
+      ;;
+    "linux-aarch64")
+      expected="${YQ_SHA256_LINUX_AARCH64}"
+      name="linux_arm64"
+      ;;
+    "linux-x86_64")
+      expected="${YQ_SHA256_LINUX_X86_64}"
+      name="linux_amd64"
+      ;;
+    *)
+      err "yq has no pinned download for $2."
+      return 1
+      ;;
+  esac
   url="https://github.com/mikefarah/yq/releases/download"
   url="${url}/${YQ_VERSION}/yq_${name}"
   download_checked "yq" "${url}" "${dir}/yq.download" "${expected}" \
@@ -183,23 +215,25 @@ main() {
   install_yq "${dir}" "${platform}" || exit 1
 }
 
-# Prints "linux" on 64-bit Intel Linux or "darwin" on Apple silicon
-# macOS, the two platforms with pinned downloads. Fails on any other.
+# Prints "darwin-arm64" on Apple silicon macOS, "linux-aarch64" on
+# 64-bit Arm Linux or "linux-x86_64" on 64-bit Intel Linux, the three
+# platforms with pinned downloads. Fails on any other.
 pick_platform() {
   local machine
   local system
 
   system="$(uname -s)" || return 1
   machine="$(uname -m)" || return 1
-  if [[ "${system}" == "Linux" && "${machine}" == "x86_64" ]]; then
-    echo "linux"
-  elif [[ "${system}" == "Darwin" && "${machine}" == "arm64" ]]; then
-    echo "darwin"
-  else
-    err "No pinned tools for ${system} ${machine}. Supported: Linux" \
-      "x86_64 and macOS arm64."
-    return 1
-  fi
+  case "${system} ${machine}" in
+    "Darwin arm64") echo "darwin-arm64" ;;
+    "Linux aarch64") echo "linux-aarch64" ;;
+    "Linux x86_64") echo "linux-x86_64" ;;
+    *)
+      err "No pinned tools for ${system} ${machine}. Supported: Linux" \
+        "x86_64, Linux aarch64 and macOS arm64."
+      return 1
+      ;;
+  esac
 }
 
 # Prints the help text, then exits with the code it is given.

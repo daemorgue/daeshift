@@ -254,7 +254,7 @@ and hash. Dependabot will make these updates itself once it is set up
 
 The Python files are resolved for Python 3.11 and later; CI checks that
 they still install there. Pinned downloads in `ci/install-tools` exist
-for Linux x86_64 and macOS arm64 only.
+for Linux x86_64, Linux aarch64 and macOS arm64 only.
 
 ## License
 

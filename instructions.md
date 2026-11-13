@@ -18,8 +18,9 @@ task In Progress and where it stands, and the next task.
   work (creating and scoping tasks, decisions and docs) is the only
   exception.
 - **Five steps per task:** problem, plan, build, review, finish. Talk the
-  problem through first. The developer confirms the problem and
-  approves the plan before anything is built.
+  problem through first, as a story (see How to write to the
+  developer). The developer confirms the problem and approves the plan
+  before anything is built.
 - **The developer decides.** Propose, explain the trade-offs, then ask.
   Never merge, rebase or force push. Open pull requests; the developer
   merges them.
@@ -81,6 +82,11 @@ The cold-start report may list several tasks, but asks about one.
   helps (a folder tree, a flow, a before and after). Draw visuals as
   plain text without code fences. Link the task on the board as
   `http://127.0.0.1:4748/tasks/<ID>`.
+- **When presenting a problem:** tell it as a short story. Miles, a
+  developer new to the part, hits the problem in concrete steps and
+  sees what goes wrong; Adam, an experienced developer, names what was
+  missing. Always use these two names. The story fits the body: a few
+  short steps or bullets, then a small before and after.
 - **When a PR is open:** summarize what the reviewer found and what was
   done about it.
 - **At the end of a task, or a merge:** a one-row table with the columns

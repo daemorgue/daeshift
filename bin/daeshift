@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
-# daeshift: start an agent session in a project, list the projects, or
-# set up, update or roll back daeshift on this machine.
+# daeshift: start an agent session in a project, list or add the
+# projects, or set up, update or roll back daeshift on this machine.
 # Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
 # to ~/.daeshift), and $DAESHIFT_HOME/local/config.yaml names the agent
 # tool to start (runner: pi). Run "daeshift --help" for usage.
@@ -55,12 +55,15 @@ list_folders() {
 }
 
 main() {
+  local add_url=""
   local code_dir
   local daeshift_home="${HOME}/.daeshift"
   local install="false"
   local installer=()
   local list="false"
+  local name=""
   local project=""
+  local puller=()
   local quiet="false"
   local release=""
   local script_dir
@@ -72,9 +75,23 @@ main() {
         shift
         break
         ;;
+      "--add-project")
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          usage 1 >&2
+        fi
+        add_url="$2"
+        shift
+        ;;
       "-h"|"--help") usage 0 ;;
       "--install") install="true" ;;
       "--list-projects") list="true" ;;
+      "--name")
+        if [[ $# -lt 2 ]]; then
+          usage 1 >&2
+        fi
+        name="$2"
+        shift
+        ;;
       "--project")
         if [[ $# -lt 2 ]]; then
           usage 1 >&2
@@ -82,7 +99,7 @@ main() {
         project="$2"
         shift
         ;;
-      # Only the installer prints progress, so -q is passed on to it.
+      # Only the installer and pull print progress, so -q is passed on.
       "-q"|"--quiet") quiet="true" ;;
       "--release")
         if [[ $# -lt 2 || -z "$2" ]]; then
@@ -96,15 +113,18 @@ main() {
     esac
     shift
   done
+  if [[ -n "${name}" && -z "${add_url}" ]]; then
+    usage 1 >&2
+  fi
   if [[ -n "${DAESHIFT_HOME:-}" ]]; then
     daeshift_home="${DAESHIFT_HOME}"
   fi
 
   check_dependencies || exit 1
+  script_dir="$(dirname "$0")" || exit 1
+  code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
   if [[ "${install}" == "true" || "${update}" == "true" \
     || -n "${release}" ]]; then
-    script_dir="$(dirname "$0")" || exit 1
-    code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
     installer=("${code_dir}/libexec/install")
     if [[ "${quiet}" == "true" ]]; then
       installer+=("--quiet")
@@ -116,10 +136,17 @@ main() {
       installer+=("--update")
     fi
     exec "${installer[@]}"
+  elif [[ -n "${add_url}" ]]; then
+    puller=("${code_dir}/libexec/pull")
+    if [[ "${quiet}" == "true" ]]; then
+      puller+=("--quiet")
+    fi
+    puller+=("--add" "${add_url}" "--name" "${name}")
+    exec "${puller[@]}"
   elif [[ "${list}" == "true" ]]; then
     list_folders "${daeshift_home}/local/projects" || exit 1
   elif [[ -n "${project}" ]]; then
-    start_project "${daeshift_home}" "${project}" || exit 1
+    start_project "${daeshift_home}" "${project}" "${code_dir}" || exit 1
   else
     usage 1 >&2
   fi
@@ -158,16 +185,15 @@ read_runner() {
 }
 
 # Starts the configured runner in project $2 under DAESHIFT_HOME $1, by
-# handing the process over to runners/<runner>/launch. Fails if the
-# project or the runner does not exist.
+# handing the process over to runners/<runner>/launch in code folder $3.
+# Fails if the project or the runner does not exist.
 start_project() {
-  local code_dir
+  local code_dir="$3"
   local daeshift_home="$1"
   local launch
   local project="$2"
   local project_dir="$1/local/projects/$2"
   local runner
-  local script_dir
 
   if [[ ! "${project}" =~ ${NAME_PATTERN} || ! -d "${project_dir}" ]]; then
     err "No project '${project}' in ${daeshift_home}/local/projects." \
@@ -177,8 +203,6 @@ start_project() {
   fi
   runner="$(read_runner "${daeshift_home}/local/config.yaml" \
     "${daeshift_home}/local/tools/bin/yq")" || return 1
-  script_dir="$(dirname "$0")" || return 1
-  code_dir="$(cd "${script_dir}/.." && pwd)" || return 1
   launch="${code_dir}/runners/${runner}/launch"
   if [[ ! -x "${launch}" ]]; then
     err "No runner '${runner}' in ${code_dir}/runners. Available runners:"
@@ -195,13 +219,17 @@ usage() {
 Usage: daeshift [OPTIONS]
 
 DESCRIPTION
-    Start an agent session in a project, list the projects, or set up,
-    update or roll back daeshift on this machine.
+    Start an agent session in a project, list or add the projects, or
+    set up, update or roll back daeshift on this machine.
 
 OPTIONS
+        --add-project URL
+                          Clone the project repo at URL and its code repos
     -h, --help            Display this help message
         --install         Set daeshift up on this machine, asking first
         --list-projects   List the projects
+        --name NAME       With --add-project: the project's name (default:
+                          the URL's last part without .git)
         --project NAME    Start a session in the project NAME
     -q, --quiet           Show only warnings and errors
         --release TAG     Check out the release TAG, such as an older one

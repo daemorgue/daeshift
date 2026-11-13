@@ -12,7 +12,7 @@ readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
 # Every outside program install runs. check_dependencies reports each
 # missing one before any work starts.
-dependencies=(dirname git mkdir)
+dependencies=(cat dirname git mkdir)
 quiet="false"
 
 ### Helpers begin
@@ -48,30 +48,39 @@ check_dependencies() {
 # Checks each program in prerequisites file $1: present, and at least
 # its minimum version. Reports every failure, then fails if any.
 check_prerequisites() {
-  local command_line
+  local command_words=()
   local failed="false"
   local found
+  local line_rest
   local minimum
   local name
   local output
 
-  while read -r name minimum command_line; do
+  if [[ ! -r "$1" ]]; then
+    err "$1 was not found. Check that the clone is complete."
+    return 1
+  fi
+  while read -r name minimum line_rest; do
     if [[ -z "${name}" || "${name}" == "#"* ]]; then
       continue
     fi
+    read -r -a command_words <<<"${line_rest}"
     if ! command -v "${name}" >/dev/null 2>&1; then
-      err "${name} was not found. Install it with your system's package" \
-        "manager."
+      if [[ "${minimum}" == "-" ]]; then
+        err "${name} was not found. Install it, then try again."
+      else
+        err "${name} was not found. Install ${name} ${minimum} or later," \
+          "then try again."
+      fi
       failed="true"
       continue
     fi
     if [[ "${minimum}" == "-" ]]; then
       continue
     fi
-    # The version command is split into words on purpose, never run
-    # through a shell.
-    # shellcheck disable=SC2086
-    output="$(${command_line} 2>&1)"
+    # Run as words, never through a shell, and away from the prompt's
+    # standard input.
+    output="$("${command_words[@]}" 2>&1 </dev/null)"
     found="unknown"
     if [[ "${output}" =~ ${VERSION_PATTERN} ]]; then
       found="${BASH_REMATCH[0]}"
@@ -118,8 +127,8 @@ main() {
   code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
   local_dir="${daeshift_home}/local"
 
-  release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
   check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
+  release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
 
   if [[ -n "${release}" ]]; then
     changes+=("check out release ${release} in ${code_dir}")
@@ -139,17 +148,23 @@ main() {
   printf '  - %s\n' "${changes[@]}"
   printf 'Make these changes? [y/N] '
   read -r answer || answer=""
-  if [[ "${answer}" != "y" && "${answer}" != "yes" ]]; then
-    warn "Nothing changed."
-    exit 1
-  fi
+  case "${answer}" in
+    [yY]|[yY][eE][sS]) ;;
+    *)
+      warn "Nothing changed."
+      exit 1
+      ;;
+  esac
 
   if [[ -n "${release}" ]]; then
     git -C "${code_dir}" -c advice.detachedHead=false checkout --quiet \
       "${release}" || exit 1
     good "Checked out ${release}"
   fi
-  mkdir -p "${local_dir}/projects" || exit 1
+  if [[ ! -d "${local_dir}/projects" ]]; then
+    mkdir -p "${local_dir}/projects" || exit 1
+    good "Created ${local_dir}/projects"
+  fi
   if [[ ! -f "${local_dir}/config" ]]; then
     echo "runner=pi" > "${local_dir}/config" || exit 1
     good "Wrote ${local_dir}/config"
@@ -163,16 +178,27 @@ main() {
 pick_release() {
   local branch
   local clone="$1"
+  local local_dir
   local newest
+  local status
 
+  # Physical paths, so a symbolic link or a trailing / cannot hide a
+  # clone inside local/. A local/ not created yet holds no clone.
+  local_dir="$2"
+  if [[ -d "$2" ]]; then
+    local_dir="$(cd "$2" && pwd -P)" || return 1
+  fi
+  clone="$(cd "${clone}" && pwd -P)" || return 1
   case "${clone}/" in
-    "$2/"*)
+    "${local_dir%/}/"*)
       err "daeshift is cloned inside $2. Clone it to the folder above" \
         "local/ instead, then run daeshift --install from there."
       return 1
       ;;
   esac
-  if [[ -n "$(git -C "${clone}" status --porcelain)" ]]; then
+  status="$(git -C "${clone}" status --porcelain --untracked-files=normal)" \
+    || return 1
+  if [[ -n "${status}" ]]; then
     err "${clone} has changes. Commit, stash or remove them, then try" \
       "again."
     return 1

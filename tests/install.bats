@@ -79,6 +79,15 @@ setup() {
     "${DAESHIFT_HOME}/local/projects"
 }
 
+@test "install keeps an existing config and projects" {
+  mkdir -p "${DAESHIFT_HOME}/local/projects/demo"
+  echo "runner=other" > "${DAESHIFT_HOME}/local/config"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=other"
+  assert_equal "$(ls "${DAESHIFT_HOME}/local/projects")" "demo"
+}
+
 @test "install refuses a clone inside local/" {
   git clone --quiet "${BATS_TEST_TMPDIR}/source" "${HOME}/inside/local"
   run env DAESHIFT_HOME="${HOME}/inside" \
@@ -105,7 +114,8 @@ setup() {
 }
 
 @test "install reports every missing or old prerequisite before changing" {
-  printf '%s\n' 'python3 3.99 python3 --version' \
+  # 3.13.5 passes 3.100 when compared as text, so this needs numbers.
+  printf '%s\n' 'python3 3.100 python3 --version' \
     'no-such-tool - no-such-tool --version' \
     > "${BATS_TEST_TMPDIR}/source/requirements/prerequisites"
   commit_all "${BATS_TEST_TMPDIR}/source" "stricter prerequisites"
@@ -113,7 +123,7 @@ setup() {
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 1
   assert_contains "${output}" \
-    "python3 3.13.5 was found; daeshift needs python3 3.99 or later."
+    "python3 3.13.5 was found; daeshift needs python3 3.100 or later."
   assert_contains "${output}" "no-such-tool was not found."
   assert_equal "$(ls "${DAESHIFT_HOME}/local" 2>/dev/null)" ""
 }

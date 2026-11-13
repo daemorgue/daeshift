@@ -14,7 +14,9 @@ readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
 # missing one before any work starts.
 dependencies=(git)
 quiet="false"
-# Fail instead of asking for a password: pull never asks.
+# Set by update_clone when it leaves a clone as it is.
+skipped="false"
+# Fail instead of asking for a password over HTTPS: pull never asks.
 export GIT_TERMINAL_PROMPT=0
 
 ### Helpers begin
@@ -164,8 +166,12 @@ main() {
       "above, then run: daeshift --project ${project} --pull"
     exit 1
   fi
-  good "Project ${project} is up to date. Start a session with:" \
-    "daeshift --project ${project}"
+  if [[ "${skipped}" == "true" ]]; then
+    good "Project ${project} is pulled, except the skipped repos above."
+  else
+    good "Project ${project} is up to date."
+  fi
+  good "Start a session with: daeshift --project ${project}"
 }
 
 # Clones or fast-forwards every repo that .config/repos.yaml in project
@@ -201,9 +207,11 @@ pull_repos() {
 }
 
 # Fast-forwards clone $1 to its origin's default branch. Skips, with a
-# warning, a clone with changes or on another branch. Warns and fails
-# when fetching or the fast-forward fails.
+# warning, a clone with changes or on another branch, and sets skipped.
+# Warns and fails when the folder is not a clone, or fetching or the
+# fast-forward fails.
 update_clone() {
+  local ancestor
   local before
   local branch
   local default
@@ -217,6 +225,13 @@ update_clone() {
   if [[ "${top}" != "${folder}" ]]; then
     warn "$1 is not a git clone. Move it away, then pull again."
     return 1
+  fi
+  status="$(git -C "$1" status --porcelain)" || return 1
+  if [[ -n "${status}" ]]; then
+    warn "$1 skipped: it has changes. Commit or stash them, then pull" \
+      "again."
+    skipped="true"
+    return 0
   fi
   if ! git -C "$1" fetch --quiet origin; then
     warn "Fetching $1 failed."
@@ -233,21 +248,24 @@ update_clone() {
   if [[ "${branch}" != "${default}" ]]; then
     warn "$1 skipped: it is on '${branch:-a detached HEAD}', not" \
       "'${default}'."
+    skipped="true"
     return 0
   fi
-  status="$(git -C "$1" status --porcelain)" || return 1
-  if [[ -n "${status}" ]]; then
-    warn "$1 skipped: it has changes. Commit or stash them, then pull" \
-      "again."
-    return 0
-  fi
-  if ! git -C "$1" merge-base --is-ancestor HEAD "origin/${default}"; then
+  git -C "$1" merge-base --is-ancestor HEAD "origin/${default}"
+  ancestor=$?
+  if [[ ${ancestor} -eq 1 ]]; then
     warn "$1 could not be fast-forwarded: it has commits that" \
       "origin/${default} lacks."
     return 1
   fi
+  if [[ ${ancestor} -ne 0 ]]; then
+    return 1
+  fi
   before="$(git -C "$1" rev-parse HEAD)" || return 1
-  git -C "$1" merge --ff-only --quiet "origin/${default}" || return 1
+  # --no-overwrite-ignore keeps an ignored local file, such as
+  # AGENTS.override.md, that the upstream starts to track.
+  git -C "$1" merge --ff-only --no-overwrite-ignore --quiet \
+    "origin/${default}" || return 1
   if [[ "$(git -C "$1" rev-parse HEAD)" != "${before}" ]]; then
     good "Fast-forwarded $1"
   fi

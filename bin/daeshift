@@ -116,7 +116,8 @@ main() {
     shift
   done
   if [[ -n "${name}" && -z "${add_url}" ]] \
-    || [[ "${pull}" == "true" && -z "${project}" ]]; then
+    || [[ "${pull}" == "true" && -z "${project}" ]] \
+    || [[ "${pull}" == "true" && -n "${add_url}" ]]; then
     usage 1 >&2
   fi
   if [[ -n "${DAESHIFT_HOME:-}" ]]; then

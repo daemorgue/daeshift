@@ -75,7 +75,8 @@ jobs:
           "${RUNNER_TEMP}/pre-commit/bin/pre-commit" --version
       - name: The Python files still install on Python 3.11
         run: |
-          for file in requirements/pre-commit.txt requirements/tiredize.txt; do
+          for file in requirements/pip-tools.txt requirements/pre-commit.txt \
+            requirements/tiredize.txt; do
             "${RUNNER_TEMP}/pre-commit/bin/pip" download --quiet \
               --python-version 3.11 --only-binary :all: --require-hashes \
               --dest "${RUNNER_TEMP}/py311" -r "${file}"

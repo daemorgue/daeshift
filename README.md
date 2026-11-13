@@ -95,11 +95,13 @@ session in every project. So the root never holds `AGENTS.md`,
      path = ~/.daeshift/git/gitconfig
    ```
 
-4. Clone a project repo into `local/projects/`, and its code repos into
-   its `repositories/` folder:
+4. Add a project. daeshift clones its project repo into
+   `local/projects/`, then each code repo the project lists into its
+   `repositories/` folder. `--name` sets the project's name; without
+   it, the name comes from the URL:
 
    ```
-   $ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
+   $ daeshift --add-project git@github.com:daemorgue/daemorgue-context.git --name daemorgue
    ```
 
 ## How to start a session

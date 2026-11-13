@@ -1,0 +1,200 @@
+#!/usr/bin/env bash
+
+# pull: clone a project and every code repo it lists, without asking.
+# Started by "daeshift --add-project URL"; run "pull --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+
+# Every outside program pull runs. check_dependencies reports each
+# missing one before any work starts.
+dependencies=(git)
+quiet="false"
+# Fail instead of asking for a password: pull never asks.
+export GIT_TERMINAL_PROMPT=0
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+
+warn() { echo "[-] $*"; }
+### Helpers end
+
+# Clones the project repo at URL $1 into projects folder $2 as project
+# $3. Fails, saying why and changing nothing, for a name that is not
+# plain, a project that exists, or a URL that cannot be reached.
+add_project() {
+  if [[ ! "$3" =~ ${NAME_PATTERN} ]]; then
+    err "'$3' is not a plain project name. Choose one with --name."
+    return 1
+  fi
+  if [[ -e "$2/$3" ]]; then
+    err "$2/$3 already exists. Choose another name with --name."
+    return 1
+  fi
+  if ! git ls-remote --quiet "$1" HEAD >/dev/null; then
+    err "$1 could not be reached. Check the URL and your access, then" \
+      "try again."
+    return 1
+  fi
+  if ! clone_repo "$1" "$2/$3"; then
+    err "The project was not added. Check the message above, then try" \
+      "again."
+    return 1
+  fi
+}
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Clones URL $1 into folder $2. Warns and fails when git cannot.
+clone_repo() {
+  if ! git clone --quiet "$1" "$2"; then
+    warn "Cloning $1 into $2 failed."
+    return 1
+  fi
+  good "Cloned $1 into $2"
+}
+
+main() {
+  local daeshift_home="${HOME}/.daeshift"
+  local failed="false"
+  local name=""
+  local project=""
+  local projects_dir
+  local url=""
+  local yq
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "--add")
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          usage 1 >&2
+        fi
+        url="$2"
+        shift
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "--name")
+        if [[ $# -lt 2 ]]; then
+          usage 1 >&2
+        fi
+        name="$2"
+        shift
+        ;;
+      "-q"|"--quiet") quiet="true" ;;
+      *) usage 1 >&2 ;;
+    esac
+    shift
+  done
+  if [[ -z "${url}" ]]; then
+    usage 1 >&2
+  fi
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+
+  check_dependencies || exit 1
+  projects_dir="${daeshift_home}/local/projects"
+  yq="${daeshift_home}/local/tools/bin/yq"
+  if [[ ! -d "${projects_dir}" || ! -x "${yq}" ]]; then
+    err "daeshift is not set up on this machine. Run daeshift --install."
+    exit 1
+  fi
+
+  project="${name}"
+  if [[ -z "${project}" ]]; then
+    # The URL's last part, after a / or a :, without .git.
+    project="${url%/}"
+    project="${project##*/}"
+    project="${project##*:}"
+    project="${project%.git}"
+  fi
+  add_project "${url}" "${projects_dir}" "${project}" || exit 1
+
+  pull_repos "${projects_dir}/${project}" "${yq}" || failed="true"
+  if [[ "${failed}" == "true" ]]; then
+    err "Some repos of ${project} were not cloned. Clone them as" \
+      "reported above."
+    exit 1
+  fi
+  good "Project ${project} is added. Start a session with:" \
+    "daeshift --project ${project}"
+}
+
+# Clones every repo that .config/repos.yaml in project folder $1 lists,
+# read with the pinned yq $2. Goes on after a repo fails; fails if any
+# did.
+pull_repos() {
+  local entries
+  local failed="false"
+  local name
+  local url
+
+  if ! entries="$("$2" '.repos[] | .name + "\t" + .url' \
+    "$1/.config/repos.yaml")"; then
+    warn "$1/.config/repos.yaml could not be read."
+    return 1
+  fi
+  while IFS=$'\t' read -r name url; do
+    if [[ -z "${name}" ]]; then
+      continue
+    fi
+    if [[ ! "${name}" =~ ${NAME_PATTERN} ]]; then
+      warn "$1/.config/repos.yaml: '${name}' is not a plain repo name."
+      failed="true"
+    else
+      clone_repo "${url}" "$1/repositories/${name}" || failed="true"
+    fi
+  done <<<"${entries}"
+  if [[ "${failed}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: pull [OPTIONS] --add URL [--name NAME]
+
+DESCRIPTION
+    Start tracking a project on this machine: clone its project repo,
+    then every code repo it lists.
+
+OPTIONS
+        --add URL        Clone the project repo at URL, then its repos
+    -h, --help           Display this help message
+        --name NAME      With --add: the project's folder name (default:
+                         the URL's last part without .git)
+    -q, --quiet          Show only warnings and errors
+EOF
+  exit "$1"
+}
+
+main "$@"

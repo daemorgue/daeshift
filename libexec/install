@@ -2,8 +2,9 @@
 
 # install: set up daeshift on this machine. Checks the clone and the
 # prerequisites, lists every change, asks once, then makes the changes:
-# check out the newest release on a fresh clone and create local/.
-# Started by "daeshift --install"; run "install --help" for usage.
+# check out the newest release on a fresh clone, create local/, and
+# install the pinned tools into local/tools/. Started by
+# "daeshift --install"; run "install --help" for usage.
 
 set -o nounset
 set -o pipefail
@@ -12,7 +13,9 @@ readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
 # Every outside program install runs. check_dependencies reports each
 # missing one before any work starts.
-dependencies=(cat dirname git mkdir)
+# npm and python3 are checked with the prerequisites, which name the
+# version needed.
+dependencies=(cat cp dirname git ln mkdir rm shasum)
 quiet="false"
 
 ### Helpers begin
@@ -21,6 +24,12 @@ err() { echo "[!] $*" >&2; }
 good() {
   if [[ "${quiet}" == "false" ]]; then
     echo "[+] $*"
+  fi
+}
+
+info() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[*] $*"
   fi
 }
 
@@ -97,6 +106,47 @@ check_prerequisites() {
   fi
 }
 
+# Installs the pinned tools of code folder $1 into tools folder $2. The
+# stamp $3 is removed first and written last, so a failed run is tried
+# again next time. Says which step failed.
+install_tools() {
+  local code_dir="$1"
+  local stamp="$3"
+  local tools_dir="$2"
+  local venv
+
+  rm -f "${stamp}" || return 1
+  if ! "${code_dir}/ci/install-tools" -q "${tools_dir}"; then
+    err "Installing bats, ShellCheck and yq failed. Run daeshift" \
+      "--install again."
+    return 1
+  fi
+  for venv in pre-commit tiredize; do
+    rm -rf "${tools_dir:?}/${venv}"
+    if ! python3 -m venv "${tools_dir}/${venv}" \
+      || ! "${tools_dir}/${venv}/bin/pip" install --quiet \
+        --require-hashes --only-binary :all: \
+        -r "${code_dir}/requirements/${venv}.txt"; then
+      err "Installing ${venv} failed. Run daeshift --install again."
+      return 1
+    fi
+  done
+  ln -sf "${tools_dir}/tiredize/bin/tiredize" "${tools_dir}/bin/tiredize" \
+    || return 1
+  mkdir -p "${tools_dir}/node" || return 1
+  cp "${code_dir}/requirements/npm/package.json" \
+    "${code_dir}/requirements/npm/package-lock.json" "${tools_dir}/node/" \
+    || return 1
+  if ! npm ci --prefix "${tools_dir}/node" --ignore-scripts \
+    --loglevel=error --no-audit --no-fund; then
+    err "Installing backlog and groma failed. Run daeshift --install" \
+      "again."
+    return 1
+  fi
+  tools_stamp "${code_dir}" > "${stamp}" || return 1
+  good "Pinned tools installed in ${tools_dir}"
+}
+
 main() {
   local answer
   local changes=()
@@ -105,6 +155,7 @@ main() {
   local local_dir
   local release=""
   local script_dir
+  local stamp
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -126,6 +177,7 @@ main() {
   script_dir="$(dirname "$0")" || exit 1
   code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
   local_dir="${daeshift_home}/local"
+  stamp="${local_dir}/tools/installed-from"
 
   check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
   release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
@@ -139,8 +191,12 @@ main() {
   if [[ ! -f "${local_dir}/config" ]]; then
     changes+=("write ${local_dir}/config with the line runner=pi")
   fi
+  if [[ -n "${release}" ]] || ! tools_current "${code_dir}" "${stamp}"; then
+    changes+=("install the pinned tools into ${local_dir}/tools")
+  fi
   if [[ ${#changes[@]} -eq 0 ]]; then
     good "Nothing to change."
+    print_next_steps "${code_dir}" "${local_dir}"
     exit 0
   fi
 
@@ -169,6 +225,13 @@ main() {
     echo "runner=pi" > "${local_dir}/config" || exit 1
     good "Wrote ${local_dir}/config"
   fi
+  if ! tools_current "${code_dir}" "${stamp}"; then
+    info "Installing the pinned tools; this takes a minute"
+    install_tools "${code_dir}" "${local_dir}/tools" "${stamp}" || exit 1
+  elif [[ -n "${release}" ]]; then
+    good "Pinned tools already current"
+  fi
+  print_next_steps "${code_dir}" "${local_dir}"
 }
 
 # Prints the release tag to check out in clone $1, or nothing when the
@@ -221,6 +284,48 @@ pick_release() {
   echo "${newest}"
 }
 
+# Prints the lines to add by hand that this machine still lacks: the
+# PATH folders from code folder $1 and local folder $2, and a git
+# identity.
+print_next_steps() {
+  local folders="$1/bin:$2/tools/bin:$2/tools/node/node_modules/.bin"
+
+  case ":${PATH}:" in
+    *":$1/bin:"*) ;;
+    *)
+      warn "Add daeshift to PATH in your shell profile:" \
+        "export PATH=\"${folders}:\${PATH}\""
+      ;;
+  esac
+  if [[ -z "$(git config --global user.name)" \
+    || -z "$(git config --global user.email)" ]]; then
+    warn "git has no identity yet: git config --global user.name" \
+      "\"Your Name\"; git config --global user.email you@example.com"
+  fi
+}
+
+# Answers whether stamp file $2 matches the pinned tool lists of code
+# folder $1.
+tools_current() {
+  local wanted
+
+  if [[ ! -f "$2" ]]; then
+    return 1
+  fi
+  wanted="$(tools_stamp "$1")" || return 1
+  [[ "$(cat "$2")" == "${wanted}" ]]
+}
+
+# Prints one SHA-256 over every file that pins a tool in code folder $1.
+tools_stamp() {
+  local sum
+
+  sum="$(cat "$1/ci/install-tools" "$1/requirements/pre-commit.txt" \
+    "$1/requirements/tiredize.txt" "$1/requirements/npm/package-lock.json" \
+    | shasum -a 256)" || return 1
+  echo "${sum%% *}"
+}
+
 # Prints the help text, then exits with the code it is given.
 usage() {
   cat <<'EOF'
@@ -228,7 +333,7 @@ Usage: install [OPTIONS]
 
 DESCRIPTION
     Set up daeshift on this machine: check the clone and the
-    prerequisites, list every change and ask, then make the changes.
+    prerequisites, list every change and ask, then install.
 
 OPTIONS
     -h, --help       Display this help message

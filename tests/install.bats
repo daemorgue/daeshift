@@ -4,8 +4,9 @@
 # home folder with a source repo holding daeshift's files (local/
 # ignored) and releases v0.1.0 and v0.2.0, with one more commit on main,
 # and a fresh clone of it as DAESHIFT_HOME. The clone's prerequisites
-# list git and python3, with a stand-in python3 (version 3.13.5) on
-# PATH. No network is used.
+# list git and python3, and its ci/install-tools only creates DIR/bin.
+# Stand-ins on PATH: python3 (version 3.13.5; "-m venv DIR" creates
+# DIR/bin/pip) and npm. No network is used.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -38,10 +39,16 @@ setup() {
 
   export HOME="${BATS_TEST_TMPDIR}/home"
   export DAESHIFT_HOME="${HOME}/.daeshift"
-  mkdir -p "${HOME}/bin" "${source}"
-  printf '%s\n' '#!/usr/bin/env bash' 'echo "Python 3.13.5"' \
-    > "${HOME}/bin/python3"
-  chmod +x "${HOME}/bin/python3"
+  mkdir -p "${HOME}/bin" "${source}/ci"
+  # The stand-ins' own lines must reach their files unexpanded.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'if [[ "$1" == "--version" ]]; then echo "Python 3.13.5"; exit 0; fi' \
+    'mkdir -p "$3/bin"' \
+    'printf "%s\n" "#!/usr/bin/env bash" > "$3/bin/pip"' \
+    'chmod +x "$3/bin/pip"' > "${HOME}/bin/python3"
+  printf '%s\n' '#!/usr/bin/env bash' > "${HOME}/bin/npm"
+  chmod +x "${HOME}/bin/python3" "${HOME}/bin/npm"
   export PATH="${HOME}/bin:${PATH}"
 
   code_dir="$(cd "${BATS_TEST_DIRNAME}/.." && pwd)"
@@ -49,6 +56,10 @@ setup() {
     "${code_dir}/requirements" "${source}/"
   printf '%s\n' 'git 2.31 git --version' 'python3 3.11 python3 --version' \
     > "${source}/requirements/prerequisites"
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/usr/bin/env bash' 'mkdir -p "$2/bin"' \
+    > "${source}/ci/install-tools"
+  chmod +x "${source}/ci/install-tools"
   git init --quiet --initial-branch=main "${source}"
   commit_all "${source}" "first"
   git -C "${source}" tag v0.1.0
@@ -69,7 +80,7 @@ setup() {
   assert_equal "$(git -C "${DAESHIFT_HOME}" branch --show-current)" "main"
 }
 
-@test "install checks out the newest release on a fresh clone" {
+@test "install checks out the newest release on a fresh clone and installs" {
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 0
   assert_contains "${output}" "check out release v0.2.0"
@@ -77,6 +88,9 @@ setup() {
   assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=pi"
   assert_equal "$(ls -d "${DAESHIFT_HOME}/local/projects")" \
     "${DAESHIFT_HOME}/local/projects"
+  assert_contains "$(ls "${DAESHIFT_HOME}/local/tools")" "installed-from"
+  assert_equal "$(readlink "${DAESHIFT_HOME}/local/tools/bin/tiredize")" \
+    "${DAESHIFT_HOME}/local/tools/tiredize/bin/tiredize"
 }
 
 @test "install keeps an existing config and projects" {
@@ -86,6 +100,23 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=other"
   assert_equal "$(ls "${DAESHIFT_HOME}/local/projects")" "demo"
+}
+
+@test "install leaves no stamp when a tool fails to install" {
+  "${daeshift}" --install <<<"y"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "${HOME}/bin/npm"
+  echo "an older stamp" > "${DAESHIFT_HOME}/local/tools/installed-from"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Installing backlog and groma failed."
+  assert_equal "$(ls "${DAESHIFT_HOME}/local/tools/installed-from" \
+    2>/dev/null)" ""
+}
+
+@test "install prints the PATH line and a missing git identity" {
+  run "${daeshift}" --install <<<"y"
+  assert_contains "${output}" "export PATH=\"${DAESHIFT_HOME}/bin:"
+  assert_contains "${output}" "git has no identity yet"
 }
 
 @test "install refuses a clone inside local/" {
@@ -113,10 +144,19 @@ setup() {
   assert_equal "$(ls "${DAESHIFT_HOME}/local" 2>/dev/null)" ""
 }
 
+@test "install reinstalls the tools when their pins change" {
+  "${daeshift}" --install <<<"y"
+  echo "an older stamp" > "${DAESHIFT_HOME}/local/tools/installed-from"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "install the pinned tools"
+  assert_contains "${output}" "Pinned tools installed"
+}
+
 @test "install reports every missing or old prerequisite before changing" {
   # 3.13.5 passes 3.100 when compared as text, so this needs numbers.
   printf '%s\n' 'python3 3.100 python3 --version' \
-    'no-such-tool - no-such-tool --version' \
+    'no-such-tool 1.2 no-such-tool --version' \
     > "${BATS_TEST_TMPDIR}/source/requirements/prerequisites"
   commit_all "${BATS_TEST_TMPDIR}/source" "stricter prerequisites"
   git -C "${DAESHIFT_HOME}" pull --quiet
@@ -124,7 +164,8 @@ setup() {
   assert_equal "${status}" 1
   assert_contains "${output}" \
     "python3 3.13.5 was found; daeshift needs python3 3.100 or later."
-  assert_contains "${output}" "no-such-tool was not found."
+  assert_contains "${output}" \
+    "no-such-tool was not found. Install no-such-tool 1.2 or later"
   assert_equal "$(ls "${DAESHIFT_HOME}/local" 2>/dev/null)" ""
 }
 

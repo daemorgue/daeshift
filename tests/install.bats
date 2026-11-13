@@ -186,11 +186,39 @@ setup() {
   assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.1.0"
 }
 
+@test "release refuses a release from before the installer" {
+  local source="${BATS_TEST_TMPDIR}/source"
+
+  "${daeshift}" --install <<<"y"
+  git -C "${source}" switch --quiet --create old v0.1.0
+  git -C "${source}" rm -r --quiet libexec
+  commit_all "${source}" "no installer yet"
+  git -C "${source}" tag v0.0.5
+  run "${daeshift}" --release v0.0.5 <<<"y"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Release v0.0.5 has no daeshift --install"
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.2.0"
+}
+
 @test "release refuses a release that does not exist" {
   "${daeshift}" --install <<<"y"
   run "${daeshift}" --release v9.9.9 <<<"y"
   assert_equal "${status}" 1
   assert_contains "${output}" "No release v9.9.9."
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.2.0"
+}
+
+@test "release without a tag prints the help and fails" {
+  run "${daeshift}" --release
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Usage: daeshift"
+}
+
+@test "update changes nothing when the answer is not yes" {
+  "${daeshift}" --install <<<"y"
+  git -C "${BATS_TEST_TMPDIR}/source" tag v0.3.0
+  run "${daeshift}" --update <<<"n"
+  assert_equal "${status}" 1
   assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.2.0"
 }
 
@@ -200,6 +228,17 @@ setup() {
   run "${daeshift}" --update <<<"y"
   assert_equal "${status}" 0
   assert_contains "${output}" "check out release v0.3.0"
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.3.0"
+}
+
+@test "update moves a fresh clone to a release made after the clone" {
+  local source="${BATS_TEST_TMPDIR}/source"
+
+  echo "fourth" > "${source}/fourth"
+  commit_all "${source}" "fourth"
+  git -C "${source}" tag v0.3.0
+  run "${daeshift}" --update <<<"y"
+  assert_equal "${status}" 0
   assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.3.0"
 }
 

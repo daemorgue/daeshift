@@ -154,8 +154,10 @@ main() {
   local daeshift_home="${HOME}/.daeshift"
   local local_dir
   local release=""
+  local release_option=""
   local script_dir
   local stamp
+  local update="false"
   local wanted=""
 
   while [[ $# -gt 0 ]]; do
@@ -170,16 +172,22 @@ main() {
         if [[ $# -lt 2 || -z "$2" ]]; then
           usage 1 >&2
         fi
-        wanted="$2"
+        release_option="$2"
         shift
         ;;
-      "--update") wanted="newest" ;;
+      "--update") update="true" ;;
       *) usage 1 >&2 ;;
     esac
     shift
   done
   if [[ -n "${DAESHIFT_HOME:-}" ]]; then
     daeshift_home="${DAESHIFT_HOME}"
+  fi
+  # --release wins over --update, as in bin/daeshift.
+  if [[ -n "${release_option}" ]]; then
+    wanted="${release_option}"
+  elif [[ "${update}" == "true" ]]; then
+    wanted="newest"
   fi
 
   check_dependencies || exit 1
@@ -189,11 +197,21 @@ main() {
   stamp="${local_dir}/tools/installed-from"
 
   check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
-  if [[ -n "${wanted}" ]]; then
-    git -C "${code_dir}" fetch --quiet --tags origin || exit 1
+  # Tags only: fetching origin/main too would make a fresh clone look
+  # moved.
+  if [[ -n "${wanted}" ]] && ! git -C "${code_dir}" fetch --quiet origin \
+    '+refs/tags/*:refs/tags/*'; then
+    err "Fetching the releases from origin failed. Check the network," \
+      "then try again."
+    exit 1
   fi
   release="$(pick_release "${code_dir}" "${local_dir}" "${wanted}")" \
     || exit 1
+  if [[ -n "${release}" ]]; then
+    # The release's own list, which may ask for newer versions.
+    check_prerequisites <(git -C "${code_dir}" show \
+      "refs/tags/${release}:requirements/prerequisites") || exit 1
+  fi
 
   if [[ -n "${release}" ]]; then
     changes+=("check out release ${release} in ${code_dir}")
@@ -227,7 +245,7 @@ main() {
 
   if [[ -n "${release}" ]]; then
     git -C "${code_dir}" -c advice.detachedHead=false checkout --quiet \
-      "${release}" || exit 1
+      "refs/tags/${release}" || exit 1
     good "Checked out ${release}"
   fi
   if [[ ! -d "${local_dir}/projects" ]]; then
@@ -251,14 +269,16 @@ main() {
 # clone is already there. $3 is the wanted release: empty to stay at the
 # current one (a fresh clone on main gets the newest), "newest", or a
 # tag. Fails, saying why, for a clone inside local folder $2, a clone
-# with changes, one neither at a release nor fresh, or an unknown tag.
+# with changes, one neither at a release nor fresh, an unknown tag, or a
+# release from before the installer.
 pick_release() {
   local branch
   local clone="$1"
-  local current=""
+  local current
   local local_dir
   local newest
   local status
+  local tags_here
   local target
 
   # Physical paths, so a symbolic link or a trailing / cannot hide a
@@ -285,9 +305,10 @@ pick_release() {
   newest="$(git -C "${clone}" tag --list 'v*' --sort=-v:refname)" \
     || return 1
   newest="${newest%%$'\n'*}"
-  if ! current="$(git -C "${clone}" describe --tags --exact-match HEAD \
-    2>/dev/null)"; then
-    current=""
+  tags_here="$(git -C "${clone}" tag --points-at HEAD --list 'v*')" \
+    || return 1
+  current="${tags_here%%$'\n'*}"
+  if [[ -z "${current}" ]]; then
     branch="$(git -C "${clone}" branch --show-current)" || return 1
     if [[ "${branch}" != "main" || -z "${newest}" ]] \
       || [[ "$(git -C "${clone}" rev-parse HEAD)" \
@@ -311,9 +332,16 @@ pick_release() {
       target="$3"
       ;;
   esac
-  if [[ "${target}" != "${current}" ]]; then
-    echo "${target}"
+  case $'\n'"${tags_here}"$'\n' in
+    *$'\n'"${target}"$'\n'*) return 0 ;;
+  esac
+  if ! git -C "${clone}" cat-file -e "refs/tags/${target}:libexec/install" \
+    2>/dev/null; then
+    err "Release ${target} has no daeshift --install, so daeshift could" \
+      "not update from it. Choose a newer release."
+    return 1
   fi
+  echo "${target}"
 }
 
 # Prints the lines to add by hand that this machine still lacks: the
@@ -373,7 +401,7 @@ OPTIONS
     -q, --quiet      Show only warnings and errors
         --release TAG
                      Check out the release TAG, such as an older one to
-                     roll back to
+                     roll back to; wins over --update
         --update     Check out the newest release
 EOF
   exit "$1"

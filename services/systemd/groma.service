@@ -1,6 +1,5 @@
 # Written by daeshift --install from services/systemd/groma.service.
-# Set the port in config.yaml instead: install replaces or removes this
-# file to match it.
+# Change config.yaml instead: install rewrites or removes this file.
 [Unit]
 Description=groma map of the @NAME@ repo (port @PORT@, every interface)
 

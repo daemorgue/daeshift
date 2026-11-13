@@ -132,13 +132,10 @@ projects:
       daeshift: 4747
 ```
 
-Then run `daeshift --install`. It checks that each project exists and
-that each repo is listed in the project's `.config/repos.yaml` and
-cloned, lists the services to set up, update or remove, and asks
-first. Take a port out of the file and the next install removes its
-service. To keep the services running after you log out and after a
-restart, run the `sudo loginctl enable-linger` command the installer
-prints. daeshift never runs sudo itself.
+Then run `daeshift --install`. It checks each project and repo, lists
+the services to set up, update or remove, and asks first. To keep them
+running after you log out, run the `sudo loginctl enable-linger`
+command it prints; daeshift never runs sudo itself.
 
 ## How to update
 

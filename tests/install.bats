@@ -7,12 +7,10 @@
 # DAESHIFT_HOME. The clone's prerequisites list git and python3, and its
 # ci/install-tools only creates DIR/bin. Stand-ins on PATH: python3
 # (version 3.13.5; "-m venv DIR" creates DIR/bin/pip) and npm. No
-# network is used. Service tests add, with set_up_services, a project
-# "demo" listing and cloning the repo "site", the yq on PATH as the
-# pinned yq (it must be mikefarah's, as CI's pinned tools provide), and
-# stand-ins for node, loginctl (Linger from ${HOME}/linger), uname
-# (Linux) and systemctl (records each call in ${HOME}/systemctl-calls;
-# is-enabled fails while ${HOME}/disabled exists).
+# network is used. set_up_services adds a project "demo" with the repo
+# "site", the yq on PATH (mikefarah's) as the pinned yq, and stand-ins:
+# node, loginctl (Linger from ~/linger), uname (Linux) and systemctl
+# (calls kept in ~/systemctl-calls; is-enabled fails if ~/disabled).
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {

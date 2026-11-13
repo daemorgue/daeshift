@@ -57,8 +57,7 @@ warn() { echo "[-] $*"; }
 ### Helpers end
 
 # Makes the service changes plan_services planned, in units folder $1:
-# stops and removes the stale units, writes the others, then enables
-# and restarts them.
+# removes the stale units, writes the others, enables and restarts them.
 apply_services() {
   local index=0
 
@@ -526,7 +525,6 @@ plan_services() {
     fi
     wanted+="${name} "
     unit="$3/${name}"
-    first_line=""
     if [[ -f "${unit}" ]]; then
       IFS= read -r first_line < "${unit}"
       if [[ "${first_line}" != "${UNIT_MARKER}"* ]]; then

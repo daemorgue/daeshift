@@ -219,8 +219,8 @@ main() {
   if [[ ! -d "${local_dir}/projects" ]]; then
     changes+=("create ${local_dir}/projects")
   fi
-  if [[ ! -f "${local_dir}/config" ]]; then
-    changes+=("write ${local_dir}/config with the line runner=pi")
+  if [[ ! -f "${local_dir}/config.yaml" ]]; then
+    changes+=("write ${local_dir}/config.yaml with the line runner: pi")
   fi
   if [[ -n "${release}" ]] || ! tools_current "${code_dir}" "${stamp}"; then
     changes+=("install the pinned tools into ${local_dir}/tools")
@@ -252,9 +252,9 @@ main() {
     mkdir -p "${local_dir}/projects" || exit 1
     good "Created ${local_dir}/projects"
   fi
-  if [[ ! -f "${local_dir}/config" ]]; then
-    echo "runner=pi" > "${local_dir}/config" || exit 1
-    good "Wrote ${local_dir}/config"
+  if [[ ! -f "${local_dir}/config.yaml" ]]; then
+    echo "runner: pi" > "${local_dir}/config.yaml" || exit 1
+    good "Wrote ${local_dir}/config.yaml"
   fi
   if ! tools_current "${code_dir}" "${stamp}"; then
     info "Installing the pinned tools; this takes a minute"

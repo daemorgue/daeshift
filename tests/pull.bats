@@ -251,6 +251,18 @@ setup() {
     "${site}/groma"
 }
 
+@test "pull never writes through an AGENTS.override.md link" {
+  local site="${projects}/demo/repositories/site"
+
+  commit_file "${BATS_TEST_TMPDIR}/site" "AGENTS.md"
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  rm "${site}/AGENTS.override.md"
+  ln -s "${BATS_TEST_TMPDIR}/elsewhere" "${site}/AGENTS.override.md"
+  run "${daeshift}" --project demo --pull
+  assert_equal "${status}" 0
+  assert_equal "$(ls "${BATS_TEST_TMPDIR}/elsewhere" 2>/dev/null)" ""
+}
+
 @test "pull reports a clone it cannot fast-forward and pulls the rest" {
   "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
   commit_file "${projects}/demo/repositories/site" "local"
@@ -272,6 +284,21 @@ setup() {
   run "${daeshift}" --project demo --pull
   assert_equal "${status}" 1
   assert_contains "${output}" "Fetching ${projects}/demo/repositories/site"
+  assert_equal "$(cat "${projects}/demo/repositories/blog/upstream")" \
+    "upstream"
+}
+
+@test "pull reports a clone it cannot set up and pulls the rest" {
+  local exclude="${projects}/demo/repositories/site/.git/info/exclude"
+
+  "${daeshift}" --add-project "${BATS_TEST_TMPDIR}/demo.git"
+  echo "mine" > "${exclude}"
+  chmod a-w "${exclude}"
+  commit_file "${BATS_TEST_TMPDIR}/blog" "upstream"
+  run "${daeshift}" --project demo --pull
+  chmod u+w "${exclude}"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Some repos of demo were not pulled."
   assert_equal "$(cat "${projects}/demo/repositories/blog/upstream")" \
     "upstream"
 }

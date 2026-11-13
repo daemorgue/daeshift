@@ -72,10 +72,10 @@ session in every project. So the root never holds `AGENTS.md`,
 
 2. Clone daeshift to `~/.daeshift`, then run its installer:
 
-```
-$ git clone https://github.com/daemorgue/daeshift.git ~/.daeshift
-$ ~/.daeshift/bin/daeshift --install
-```
+   ```
+   $ git clone https://github.com/daemorgue/daeshift.git ~/.daeshift
+   $ ~/.daeshift/bin/daeshift --install
+   ```
 
    The installer checks the clone and the prerequisites, lists every
    change it will make, and asks before making them. On a fresh clone
@@ -84,14 +84,16 @@ $ ~/.daeshift/bin/daeshift --install
    there. Running it again changes nothing.
 
 3. Add the `PATH` line the installer prints to your shell profile. If
-   git has no name and email yet, set them as the installer says.
+   git has no name and email yet, set them as the installer says. Then
+   turn on daeshift's checks with the `~/.gitconfig` entry under
+   [Git hooks](#git-hooks).
 
 4. Clone a project repo into `local/projects/`, and its code repos into
    its `repositories/` folder:
 
-```
-$ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
-```
+   ```
+   $ git clone git@github.com:daemorgue/daemorgue-context.git ~/.daeshift/local/projects/daemorgue
+   ```
 
 ## How to start a session
 

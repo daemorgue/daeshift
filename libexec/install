@@ -13,7 +13,9 @@ readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
 # Every outside program install runs. check_dependencies reports each
 # missing one before any work starts.
-dependencies=(cat cp dirname git ln mkdir npm python3 rm shasum)
+# npm and python3 are checked with the prerequisites, which name the
+# version needed.
+dependencies=(cat cp dirname git ln mkdir rm shasum)
 quiet="false"
 
 ### Helpers begin
@@ -104,21 +106,30 @@ check_prerequisites() {
   fi
 }
 
-# Installs the pinned tools of code folder $1 into tools folder $2 and
-# writes stamp $3 last, so a failed run is tried again next time.
+# Installs the pinned tools of code folder $1 into tools folder $2. The
+# stamp $3 is removed first and written last, so a failed run is tried
+# again next time. Says which step failed.
 install_tools() {
   local code_dir="$1"
   local stamp="$3"
   local tools_dir="$2"
   local venv
 
-  "${code_dir}/ci/install-tools" -q "${tools_dir}" || return 1
+  rm -f "${stamp}" || return 1
+  if ! "${code_dir}/ci/install-tools" -q "${tools_dir}"; then
+    err "Installing bats, ShellCheck and yq failed. Run daeshift" \
+      "--install again."
+    return 1
+  fi
   for venv in pre-commit tiredize; do
     rm -rf "${tools_dir:?}/${venv}"
-    python3 -m venv "${tools_dir}/${venv}" || return 1
-    "${tools_dir}/${venv}/bin/pip" install --quiet --require-hashes \
-      --only-binary :all: -r "${code_dir}/requirements/${venv}.txt" \
-      || return 1
+    if ! python3 -m venv "${tools_dir}/${venv}" \
+      || ! "${tools_dir}/${venv}/bin/pip" install --quiet \
+        --require-hashes --only-binary :all: \
+        -r "${code_dir}/requirements/${venv}.txt"; then
+      err "Installing ${venv} failed. Run daeshift --install again."
+      return 1
+    fi
   done
   ln -sf "${tools_dir}/tiredize/bin/tiredize" "${tools_dir}/bin/tiredize" \
     || return 1
@@ -126,8 +137,12 @@ install_tools() {
   cp "${code_dir}/requirements/npm/package.json" \
     "${code_dir}/requirements/npm/package-lock.json" "${tools_dir}/node/" \
     || return 1
-  npm ci --prefix "${tools_dir}/node" --ignore-scripts --silent \
-    || return 1
+  if ! npm ci --prefix "${tools_dir}/node" --ignore-scripts \
+    --loglevel=error --no-audit --no-fund; then
+    err "Installing backlog and groma failed. Run daeshift --install" \
+      "again."
+    return 1
+  fi
   tools_stamp "${code_dir}" > "${stamp}" || return 1
   good "Pinned tools installed in ${tools_dir}"
 }
@@ -213,6 +228,8 @@ main() {
   if ! tools_current "${code_dir}" "${stamp}"; then
     info "Installing the pinned tools; this takes a minute"
     install_tools "${code_dir}" "${local_dir}/tools" "${stamp}" || exit 1
+  elif [[ -n "${release}" ]]; then
+    good "Pinned tools already current"
   fi
   print_next_steps "${code_dir}" "${local_dir}"
 }
@@ -280,9 +297,10 @@ print_next_steps() {
         "export PATH=\"${folders}:\${PATH}\""
       ;;
   esac
-  if [[ -z "$(git config --global user.name)" ]]; then
-    warn "git has no identity yet: git config --global user.name NAME;" \
-      "git config --global user.email EMAIL"
+  if [[ -z "$(git config --global user.name)" \
+    || -z "$(git config --global user.email)" ]]; then
+    warn "git has no identity yet: git config --global user.name" \
+      "\"Your Name\"; git config --global user.email you@example.com"
   fi
 }
 

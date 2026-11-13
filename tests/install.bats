@@ -89,6 +89,8 @@ setup() {
   assert_equal "$(ls -d "${DAESHIFT_HOME}/local/projects")" \
     "${DAESHIFT_HOME}/local/projects"
   assert_contains "$(ls "${DAESHIFT_HOME}/local/tools")" "installed-from"
+  assert_equal "$(readlink "${DAESHIFT_HOME}/local/tools/bin/tiredize")" \
+    "${DAESHIFT_HOME}/local/tools/tiredize/bin/tiredize"
 }
 
 @test "install keeps an existing config and projects" {
@@ -98,6 +100,23 @@ setup() {
   assert_equal "${status}" 0
   assert_equal "$(cat "${DAESHIFT_HOME}/local/config")" "runner=other"
   assert_equal "$(ls "${DAESHIFT_HOME}/local/projects")" "demo"
+}
+
+@test "install leaves no stamp when a tool fails to install" {
+  "${daeshift}" --install <<<"y"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 1' > "${HOME}/bin/npm"
+  echo "an older stamp" > "${DAESHIFT_HOME}/local/tools/installed-from"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "Installing backlog and groma failed."
+  assert_equal "$(ls "${DAESHIFT_HOME}/local/tools/installed-from" \
+    2>/dev/null)" ""
+}
+
+@test "install prints the PATH line and a missing git identity" {
+  run "${daeshift}" --install <<<"y"
+  assert_contains "${output}" "export PATH=\"${DAESHIFT_HOME}/bin:"
+  assert_contains "${output}" "git has no identity yet"
 }
 
 @test "install refuses a clone inside local/" {
@@ -137,7 +156,7 @@ setup() {
 @test "install reports every missing or old prerequisite before changing" {
   # 3.13.5 passes 3.100 when compared as text, so this needs numbers.
   printf '%s\n' 'python3 3.100 python3 --version' \
-    'no-such-tool - no-such-tool --version' \
+    'no-such-tool 1.2 no-such-tool --version' \
     > "${BATS_TEST_TMPDIR}/source/requirements/prerequisites"
   commit_all "${BATS_TEST_TMPDIR}/source" "stricter prerequisites"
   git -C "${DAESHIFT_HOME}" pull --quiet
@@ -145,7 +164,8 @@ setup() {
   assert_equal "${status}" 1
   assert_contains "${output}" \
     "python3 3.13.5 was found; daeshift needs python3 3.100 or later."
-  assert_contains "${output}" "no-such-tool was not found."
+  assert_contains "${output}" \
+    "no-such-tool was not found. Install no-such-tool 1.2 or later"
   assert_equal "$(ls "${DAESHIFT_HOME}/local" 2>/dev/null)" ""
 }
 

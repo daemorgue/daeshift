@@ -116,6 +116,16 @@ with daeshift's instructions, skills and prompts. You can set
 daeshift's git hooks then don't run, because they only look in
 `~/.daeshift/local/projects/`.
 
+## How to update
+
+```
+$ daeshift --update
+```
+
+The update checks out the newest release and installs any tool whose
+pin changed, asking first. To go back to an earlier release, name it,
+such as `daeshift --release v0.4.12`.
+
 ## Learn more
 
 The daemorgue project wiki, in `wiki/daeshift/` of the

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
-# install: set up daeshift on this machine. Checks the clone and the
-# prerequisites, lists every change, asks once, then makes the changes:
-# check out the newest release on a fresh clone, create local/, and
-# install the pinned tools into local/tools/. Started by
-# "daeshift --install"; run "install --help" for usage.
+# install: set up, update or roll back daeshift on this machine. Checks
+# the prerequisites and the clone, lists every change, asks once, then
+# makes the changes: check out a release, create local/, and install the
+# pinned tools into local/tools/. Started by "daeshift --install",
+# "--update" or "--release TAG"; run "install --help" for usage.
 
 set -o nounset
 set -o pipefail
@@ -156,6 +156,7 @@ main() {
   local release=""
   local script_dir
   local stamp
+  local wanted=""
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -165,6 +166,14 @@ main() {
         ;;
       "-h"|"--help") usage 0 ;;
       "-q"|"--quiet") quiet="true" ;;
+      "--release")
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          usage 1 >&2
+        fi
+        wanted="$2"
+        shift
+        ;;
+      "--update") wanted="newest" ;;
       *) usage 1 >&2 ;;
     esac
     shift
@@ -180,7 +189,11 @@ main() {
   stamp="${local_dir}/tools/installed-from"
 
   check_prerequisites "${code_dir}/requirements/prerequisites" || exit 1
-  release="$(pick_release "${code_dir}" "${local_dir}")" || exit 1
+  if [[ -n "${wanted}" ]]; then
+    git -C "${code_dir}" fetch --quiet --tags origin || exit 1
+  fi
+  release="$(pick_release "${code_dir}" "${local_dir}" "${wanted}")" \
+    || exit 1
 
   if [[ -n "${release}" ]]; then
     changes+=("check out release ${release} in ${code_dir}")
@@ -235,15 +248,18 @@ main() {
 }
 
 # Prints the release tag to check out in clone $1, or nothing when the
-# clone is already at a release. A fresh clone on main gets the newest
+# clone is already there. $3 is the wanted release: empty to stay at the
+# current one (a fresh clone on main gets the newest), "newest", or a
 # tag. Fails, saying why, for a clone inside local folder $2, a clone
-# with changes, or one neither at a release nor fresh.
+# with changes, one neither at a release nor fresh, or an unknown tag.
 pick_release() {
   local branch
   local clone="$1"
+  local current=""
   local local_dir
   local newest
   local status
+  local target
 
   # Physical paths, so a symbolic link or a trailing / cannot hide a
   # clone inside local/. A local/ not created yet holds no clone.
@@ -266,22 +282,38 @@ pick_release() {
       "again."
     return 1
   fi
-  if git -C "${clone}" describe --tags --exact-match HEAD >/dev/null 2>&1
-  then
-    return 0
-  fi
-  branch="$(git -C "${clone}" branch --show-current)" || return 1
   newest="$(git -C "${clone}" tag --list 'v*' --sort=-v:refname)" \
     || return 1
   newest="${newest%%$'\n'*}"
-  if [[ "${branch}" != "main" || -z "${newest}" ]] \
-    || [[ "$(git -C "${clone}" rev-parse HEAD)" \
-      != "$(git -C "${clone}" rev-parse origin/main 2>/dev/null)" ]]; then
-    err "${clone} is not at a release tag. Check one out, such as:" \
-      "git -C ${clone} checkout ${newest:-<tag>}"
-    return 1
+  if ! current="$(git -C "${clone}" describe --tags --exact-match HEAD \
+    2>/dev/null)"; then
+    current=""
+    branch="$(git -C "${clone}" branch --show-current)" || return 1
+    if [[ "${branch}" != "main" || -z "${newest}" ]] \
+      || [[ "$(git -C "${clone}" rev-parse HEAD)" \
+        != "$(git -C "${clone}" rev-parse origin/main 2>/dev/null)" ]]; then
+      err "${clone} is not at a release tag. Check one out, such as:" \
+        "git -C ${clone} checkout ${newest:-<tag>}"
+      return 1
+    fi
   fi
-  echo "${newest}"
+
+  case "$3" in
+    "") target="${current:-${newest}}" ;;
+    "newest") target="${newest}" ;;
+    *)
+      if ! git -C "${clone}" rev-parse --verify --quiet "refs/tags/$3" \
+        >/dev/null; then
+        err "No release $3. List the releases with: git -C ${clone} tag" \
+          "--list 'v*'"
+        return 1
+      fi
+      target="$3"
+      ;;
+  esac
+  if [[ "${target}" != "${current}" ]]; then
+    echo "${target}"
+  fi
 }
 
 # Prints the lines to add by hand that this machine still lacks: the
@@ -332,12 +364,17 @@ usage() {
 Usage: install [OPTIONS]
 
 DESCRIPTION
-    Set up daeshift on this machine: check the clone and the
-    prerequisites, list every change and ask, then install.
+    Set up, update or roll back daeshift on this machine: check the
+    prerequisites and the clone, list every change and ask, then
+    install.
 
 OPTIONS
     -h, --help       Display this help message
     -q, --quiet      Show only warnings and errors
+        --release TAG
+                     Check out the release TAG, such as an older one to
+                     roll back to
+        --update     Check out the newest release
 EOF
   exit "$1"
 }

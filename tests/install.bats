@@ -1,12 +1,13 @@
 #!/usr/bin/env bats
 
-# Tests for daeshift --install (libexec/install). Each test gets its own
-# home folder with a source repo holding daeshift's files (local/
-# ignored) and releases v0.1.0 and v0.2.0, with one more commit on main,
-# and a fresh clone of it as DAESHIFT_HOME. The clone's prerequisites
-# list git and python3, and its ci/install-tools only creates DIR/bin.
-# Stand-ins on PATH: python3 (version 3.13.5; "-m venv DIR" creates
-# DIR/bin/pip) and npm. No network is used.
+# Tests for daeshift --install, --update and --release
+# (libexec/install). Each test gets its own home folder with a source
+# repo holding daeshift's files (local/ ignored) and releases v0.1.0 and
+# v0.2.0, with one more commit on main, and a fresh clone of it as
+# DAESHIFT_HOME. The clone's prerequisites list git and python3, and its
+# ci/install-tools only creates DIR/bin. Stand-ins on PATH: python3
+# (version 3.13.5; "-m venv DIR" creates DIR/bin/pip) and npm. No
+# network is used.
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -175,4 +176,36 @@ setup() {
   assert_equal "${status}" 0
   assert_contains "${output}" "Nothing to change."
   assert_equal "$(printf '%s\n' "${output}" | grep --count "Make these")" "0"
+}
+
+@test "release checks out an older release to roll back" {
+  "${daeshift}" --install <<<"y"
+  run "${daeshift}" --release v0.1.0 <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "check out release v0.1.0"
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.1.0"
+}
+
+@test "release refuses a release that does not exist" {
+  "${daeshift}" --install <<<"y"
+  run "${daeshift}" --release v9.9.9 <<<"y"
+  assert_equal "${status}" 1
+  assert_contains "${output}" "No release v9.9.9."
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.2.0"
+}
+
+@test "update checks out a newer release" {
+  "${daeshift}" --install <<<"y"
+  git -C "${BATS_TEST_TMPDIR}/source" tag v0.3.0
+  run "${daeshift}" --update <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "check out release v0.3.0"
+  assert_equal "$(git -C "${DAESHIFT_HOME}" describe --tags)" "v0.3.0"
+}
+
+@test "update on the newest release changes nothing" {
+  "${daeshift}" --install <<<"y"
+  run "${daeshift}" --update </dev/null
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Nothing to change."
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 # daeshift: start an agent session in a project, list the projects, or
-# set daeshift up on this machine.
+# set up, update or roll back daeshift on this machine.
 # Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
 # to ~/.daeshift), and $DAESHIFT_HOME/local/config names the agent tool
 # to start (runner=pi). Run "daeshift --help" for usage.
@@ -58,10 +58,13 @@ main() {
   local code_dir
   local daeshift_home="${HOME}/.daeshift"
   local install="false"
+  local installer=()
   local list="false"
   local project=""
   local quiet="false"
+  local release=""
   local script_dir
+  local update="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -79,8 +82,16 @@ main() {
         project="$2"
         shift
         ;;
-      # Only --install prints progress, so -q is passed on to it.
+      # Only the installer prints progress, so -q is passed on to it.
       "-q"|"--quiet") quiet="true" ;;
+      "--release")
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          usage 1 >&2
+        fi
+        release="$2"
+        shift
+        ;;
+      "--update") update="true" ;;
       *) usage 1 >&2 ;;
     esac
     shift
@@ -90,13 +101,21 @@ main() {
   fi
 
   check_dependencies || exit 1
-  if [[ "${install}" == "true" ]]; then
+  if [[ "${install}" == "true" || "${update}" == "true" \
+    || -n "${release}" ]]; then
     script_dir="$(dirname "$0")" || exit 1
     code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
+    installer=("${code_dir}/libexec/install")
     if [[ "${quiet}" == "true" ]]; then
-      exec "${code_dir}/libexec/install" --quiet
+      installer+=("--quiet")
     fi
-    exec "${code_dir}/libexec/install"
+    # --release wins over --update, which wins over --install.
+    if [[ -n "${release}" ]]; then
+      installer+=("--release" "${release}")
+    elif [[ "${update}" == "true" ]]; then
+      installer+=("--update")
+    fi
+    exec "${installer[@]}"
   elif [[ "${list}" == "true" ]]; then
     list_folders "${daeshift_home}/local/projects" || exit 1
   elif [[ -n "${project}" ]]; then
@@ -172,8 +191,8 @@ usage() {
 Usage: daeshift [OPTIONS]
 
 DESCRIPTION
-    Start an agent session in a project, list the projects, or set
-    daeshift up on this machine.
+    Start an agent session in a project, list the projects, or set up,
+    update or roll back daeshift on this machine.
 
 OPTIONS
     -h, --help            Display this help message
@@ -181,6 +200,9 @@ OPTIONS
         --list-projects   List the projects
         --project NAME    Start a session in the project NAME
     -q, --quiet           Show only warnings and errors
+        --release TAG     Check out the release TAG, such as an older one
+                          to roll back to, asking first
+        --update          Check out the newest release, asking first
 
 ENVIRONMENT
     DAESHIFT_HOME   Where local/config and local/projects/ live

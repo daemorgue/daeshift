@@ -100,10 +100,11 @@ check_services() {
 
   services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" "$1/config.yaml")" \
     || return 1
+  if [[ -z "${services}" ]]; then
+    fail "$1/config.yaml sets no service, so none was checked."
+    return
+  fi
   while IFS=$'\t' read -r kind project repo port; do
-    if [[ -z "${kind}" ]]; then
-      continue
-    fi
     if [[ "${kind}" == "board" ]]; then
       unit="backlog-${project}.service"
     else
@@ -119,14 +120,29 @@ check_services() {
   done <<<"${services}"
 }
 
-# Checks that one tool reports its pinned version. $1 is the tool's
-# name, $2 the version it should report and $3 what it reported.
+# Checks that one tool reports its pinned version: one word of what it
+# reported, without a leading v, equals the pin. $1 is the tool's name,
+# $2 the pin and $3 what the tool reported.
 check_version() {
-  if [[ "$3" != *"$2"* ]]; then
-    fail "$1 reports '$3', not the pinned $2."
+  local word
+  local words
+
+  if [[ -z "$2" || "$2" == "null" ]]; then
+    fail "No pin was found for $1. Check its pin file."
     return
   fi
-  good "$1 $2"
+  if [[ -z "$3" ]]; then
+    fail "$1 reported no version."
+    return
+  fi
+  read -r -a words <<<"${3//$'\n'/ }"
+  for word in "${words[@]}"; do
+    if [[ "${word#v}" == "${2#v}" ]]; then
+      good "$1 $2"
+      return
+    fi
+  done
+  fail "$1 reports '$3', not the pinned $2."
 }
 
 # Checks each pinned tool's version against the pin files in the code
@@ -138,13 +154,16 @@ check_versions() {
   local reported
   local tools="$2/tools"
 
+  # A tool that fails to report leaves reported empty or partial, which
+  # check_version reports as a mismatch, so the next tool is still
+  # checked.
   expected="$(read_pin "$1/ci/install-tools" BATS_COMMIT)" || return 1
   reported="$(git -C "${tools}/bats-core" rev-parse HEAD)"
   check_version bats "${expected}" "${reported}"
   expected="$(read_pin "$1/ci/install-tools" SHELLCHECK_VERSION)" \
     || return 1
   reported="$("${tools}/bin/shellcheck" --version)"
-  check_version ShellCheck "${expected#v}" "${reported}"
+  check_version ShellCheck "${expected}" "${reported}"
   expected="$(read_pin "$1/ci/install-tools" YQ_VERSION)" || return 1
   reported="$("${tools}/bin/yq" --version)"
   check_version yq "${expected}" "${reported}"
@@ -164,7 +183,8 @@ check_versions() {
 
 main() {
   local code_folder
-  local local_folder
+  local daeshift_home="${HOME}/.daeshift"
+  local script_folder
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -180,14 +200,17 @@ main() {
   done
 
   check_dependencies || exit 1
-  code_folder="$(dirname "$(dirname "$0")")" || exit 1
-  local_folder="${DAESHIFT_HOME:-${HOME}/.daeshift}/local"
-  check_layout "${local_folder}"
+  script_folder="$(dirname "$0")" || exit 1
+  code_folder="$(dirname "${script_folder}")" || exit 1
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+  check_layout "${daeshift_home}/local"
   if [[ "${failed}" == "true" ]]; then
     exit 1
   fi
-  check_versions "${code_folder}" "${local_folder}" || exit 1
-  check_services "${local_folder}" || exit 1
+  check_versions "${code_folder}" "${daeshift_home}/local" || exit 1
+  check_services "${daeshift_home}/local" || exit 1
   if [[ "${failed}" == "true" ]]; then
     exit 1
   fi
@@ -232,7 +255,8 @@ wait_for_port() {
   local second
 
   for ((second = 0; second < WAIT_SECONDS; second++)); do
-    if curl --silent --output /dev/null "http://127.0.0.1:$1/"; then
+    if curl --silent --max-time 2 --output /dev/null \
+      "http://127.0.0.1:$1/"; then
       return 0
     fi
     sleep 1

@@ -1,0 +1,240 @@
+#!/usr/bin/env bash
+
+# check-fresh-box: check that "daeshift --install" set this machine up:
+# the layout under local/, each pinned tool at its pinned version, and
+# each service in local/config.yaml active and answering on its port.
+# Run by the fresh-box CI job; run "check-fresh-box --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+# One line per service in config.yaml: kind, project, repo ("-" for a
+# board) and port, separated by tabs, as libexec/install reads them.
+# $p is yq's, not the shell's.
+# shellcheck disable=SC2016
+readonly SERVICES_QUERY='(.projects // {}) | to_entries | .[] | .key as $p
+  | ((select(.value.board != null)
+      | "board\t" + $p + "\t-\t" + (.value.board | tostring)),
+    ((.value.repos // {}) | to_entries | .[]
+      | "map\t" + $p + "\t" + .key + "\t" + (.value | tostring)))'
+# How long a service may take to answer after it started.
+readonly WAIT_SECONDS=30
+
+# Every outside program check-fresh-box runs. check_dependencies
+# reports each missing one before any work starts.
+dependencies=(curl dirname git jq sed sleep systemctl)
+failed="false"
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+# Reports a failed check and goes on, so every failure is listed.
+fail() {
+  err "$*"
+  failed="true"
+}
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Checks that each file and folder install creates exists. $1 is the
+# local folder.
+check_layout() {
+  local path
+  local paths=(
+    "$1/config.yaml"
+    "$1/projects/"
+    "$1/tools/bin/bats"
+    "$1/tools/bin/shellcheck"
+    "$1/tools/bin/tiredize"
+    "$1/tools/bin/yq"
+    "$1/tools/installed-from"
+    "$1/tools/node/node_modules/.bin/backlog"
+    "$1/tools/node/node_modules/.bin/groma"
+    "$1/tools/pre-commit/bin/pre-commit"
+  )
+
+  for path in "${paths[@]}"; do
+    if [[ "${path}" == */ && ! -d "${path}" ]] \
+      || [[ "${path}" != */ && ! -e "${path}" ]]; then
+      fail "${path} is missing."
+    fi
+  done
+  if [[ "${failed}" == "false" ]]; then
+    good "local/ holds the config, the projects folder and the tools"
+  fi
+}
+
+# Checks that each service in config.yaml is active and answers on its
+# port. $1 is the local folder.
+check_services() {
+  local kind
+  local port
+  local project
+  local repo
+  local services
+  local unit
+
+  services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" "$1/config.yaml")" \
+    || return 1
+  while IFS=$'\t' read -r kind project repo port; do
+    if [[ "${kind}" == "board" ]]; then
+      unit="backlog-${project}.service"
+    else
+      unit="groma-${project}-${repo}.service"
+    fi
+    if ! systemctl --user --quiet is-active "${unit}"; then
+      fail "${unit} is not active."
+    elif ! wait_for_port "${port}"; then
+      fail "${unit} does not answer on port ${port}."
+    else
+      good "${unit} answers on port ${port}"
+    fi
+  done <<<"${services}"
+}
+
+# Checks that one tool reports its pinned version. $1 is the tool's
+# name, $2 the version it should report and $3 what it reported.
+check_version() {
+  if [[ "$3" != *"$2"* ]]; then
+    fail "$1 reports '$3', not the pinned $2."
+    return
+  fi
+  good "$1 $2"
+}
+
+# Checks each pinned tool's version against the pin files in the code
+# folder. $1 is the code folder, $2 the local folder.
+check_versions() {
+  local expected
+  local lock="$1/requirements/npm/package-lock.json"
+  local name
+  local reported
+  local tools="$2/tools"
+
+  expected="$(read_pin "$1/ci/install-tools" BATS_COMMIT)" || return 1
+  reported="$(git -C "${tools}/bats-core" rev-parse HEAD)"
+  check_version bats "${expected}" "${reported}"
+  expected="$(read_pin "$1/ci/install-tools" SHELLCHECK_VERSION)" \
+    || return 1
+  reported="$("${tools}/bin/shellcheck" --version)"
+  check_version ShellCheck "${expected#v}" "${reported}"
+  expected="$(read_pin "$1/ci/install-tools" YQ_VERSION)" || return 1
+  reported="$("${tools}/bin/yq" --version)"
+  check_version yq "${expected}" "${reported}"
+  for name in pre-commit tiredize; do
+    expected="$(sed -n "s/^${name}==\([^ ]*\).*/\1/p" \
+      "$1/requirements/${name}.txt")" || return 1
+    reported="$("${tools}/${name}/bin/${name}" --version)"
+    check_version "${name}" "${expected}" "${reported}"
+  done
+  for name in backlog groma; do
+    expected="$(jq -r ".packages[\"node_modules/${name}.md\"].version" \
+      "${lock}")" || return 1
+    reported="$("${tools}/node/node_modules/.bin/${name}" --version)"
+    check_version "${name}" "${expected}" "${reported}"
+  done
+}
+
+main() {
+  local code_folder
+  local local_folder
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      *) usage 1 >&2 ;;
+    esac
+    shift
+  done
+
+  check_dependencies || exit 1
+  code_folder="$(dirname "$(dirname "$0")")" || exit 1
+  local_folder="${DAESHIFT_HOME:-${HOME}/.daeshift}/local"
+  check_layout "${local_folder}"
+  if [[ "${failed}" == "true" ]]; then
+    exit 1
+  fi
+  check_versions "${code_folder}" "${local_folder}" || exit 1
+  check_services "${local_folder}" || exit 1
+  if [[ "${failed}" == "true" ]]; then
+    exit 1
+  fi
+}
+
+# Prints the value of one readonly NAME="value" line of a bash file.
+# $1 is the file, $2 the name.
+read_pin() {
+  local value
+
+  value="$(sed -n "s/^readonly $2=\"\([^\"]*\)\".*/\1/p" "$1")" \
+    || return 1
+  if [[ -z "${value}" ]]; then
+    err "$1 has no $2."
+    return 1
+  fi
+  echo "${value}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: check-fresh-box [OPTIONS]
+
+DESCRIPTION
+    Check that daeshift --install set this machine up: the layout under
+    local/, the pinned tools' versions and the services in config.yaml.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+
+ENVIRONMENT
+    DAESHIFT_HOME    The folder that holds local/ (default: ~/.daeshift)
+EOF
+  exit "$1"
+}
+
+# Waits up to WAIT_SECONDS for an HTTP answer on 127.0.0.1. $1 is the
+# port. Fails when nothing answers.
+wait_for_port() {
+  local second
+
+  for ((second = 0; second < WAIT_SECONDS; second++)); do
+    if curl --silent --output /dev/null "http://127.0.0.1:$1/"; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+main "$@"

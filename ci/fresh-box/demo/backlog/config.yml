@@ -1,0 +1,11 @@
+project_name: "demo"
+default_status: "To Do"
+statuses: ["To Do", "In Progress", "Done"]
+labels: []
+projects: ["_project", "pcr-library", "tiredize"]
+date_format: yyyy-mm-dd
+auto_open_browser: false
+remote_operations: false
+auto_commit: false
+check_active_branches: false
+task_prefix: "task"

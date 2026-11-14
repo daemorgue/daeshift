@@ -61,6 +61,15 @@ jobs:
       - name: Add the demo project and turn on its services
         run: |
           cp -R ci/fresh-box/demo "${RUNNER_TEMP}/demo"
+          # The board is written here: a code repo commits no board.
+          mkdir "${RUNNER_TEMP}/demo/backlog"
+          cat > "${RUNNER_TEMP}/demo/backlog/config.yml" <<'EOF'
+          project_name: "demo"
+          default_status: "To Do"
+          statuses: ["To Do", "In Progress", "Done"]
+          projects: ["_project", "pcr-library", "tiredize"]
+          auto_commit: false
+          EOF
           git -C "${RUNNER_TEMP}/demo" init --quiet --initial-branch main
           git -C "${RUNNER_TEMP}/demo" add --all
           git -C "${RUNNER_TEMP}/demo" -c user.name=CI \

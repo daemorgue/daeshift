@@ -22,7 +22,7 @@ readonly WAIT_SECONDS=30
 
 # Every outside program check-fresh-box runs. check_dependencies
 # reports each missing one before any work starts.
-dependencies=(curl dirname git jq sed sleep systemctl)
+dependencies=(cat curl dirname git jq sed sleep systemctl)
 failed="false"
 quiet="false"
 
@@ -131,7 +131,7 @@ check_version() {
     fail "No pin was found for $1. Check its pin file."
     return
   fi
-  if [[ -z "$3" ]]; then
+  if [[ -z "${3//[[:space:]]/}" ]]; then
     fail "$1 reported no version."
     return
   fi

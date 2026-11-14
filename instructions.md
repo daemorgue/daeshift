@@ -118,7 +118,8 @@ The cold-start report may list several tasks, but asks about one.
   before and after shows only a change the task already proposes.
   Link the task on the board as `http://127.0.0.1:4748/tasks/<ID>`.
 - **When a PR is open:** summarize what the reviewer found and what was
-  done about it. In a story message, the review chapter does this.
+  done about it. In a story message, the review chapter and its
+  summary do this.
 - **At the end of a task, or a merge:** a one-row table with the columns
   wiki, README.md, groma, backlog and `<project repo> pushed`, each ✅
   done, ❌ not done or ➖ not applicable.
@@ -128,4 +129,5 @@ The cold-start report may list several tasks, but asks about one.
   something wrong, as A question gets an answer says); a decision
   still pending comes back in the next message. Otherwise, when the
   developer has something to decide, it asks for that and recommends
-  an answer.
+  an answer. With nothing to decide, it asks whether to go on to the
+  next step.

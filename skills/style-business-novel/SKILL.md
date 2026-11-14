@@ -105,9 +105,10 @@ The cast never changes. Use no other named characters.
 
 ## Decisions
 
-- Bold marks one thing only: the sentence that settles a design
-  decision. Never bold for emphasis.
-- Most chapters hold no bold. A plan chapter may hold three or four.
+- In the chapter's prose, bold marks one thing only: the sentence that
+  settles a design decision. Never bold for emphasis.
+- Most chapters hold no bold beyond the title. A plan chapter may hold
+  three or four decisions.
 - Every bolded decision is also recorded in the task notes, in full.
 
 ## Word choice
@@ -134,6 +135,8 @@ The cast never changes. Use no other named characters.
 After the chapter, in the agent's own voice and outside the story:
 
 - The overall picture in plain words, in two to four sentences.
+- After a review chapter, every finding and what was done about it,
+  one line each.
 - The options open to the developer, one line each, and the one
   recommended, with its reason. When the developer has nothing to
   decide, give no options and recommend nothing.

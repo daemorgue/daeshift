@@ -1,15 +1,15 @@
 ---
 name: style-business-novel
-description: The business-novel style, after The Phoenix Project - a first-person, present-tense scene with a fixed cast, followed by a plain summary with options - for the developer messages that tell a task as a story. Covers cast, truth, chapters, scenes, dialogue, decisions, length, word choice and the summary. Use when writing a task's problem, plan, build, review or finish message, or a reply to the developer's pushback on a decision.
+description: The business-novel style, after The Phoenix Project - a first-person, present-tense scene with a fixed cast, followed by a plain summary with options - for the developer messages that tell a task as a story. Covers cast, truth, chapters, what each step shows, scenes and dialogue, decisions, word choice, the summary and the reply tags. Use when writing a task's problem, plan, build, review or finish message, or a reply to the developer's pushback on a decision.
 ---
 
 # Style: business novel
 
 A task is told as a short story, one chapter per step, so that the
 chapters from problem to finish read as one tale that would make sense
-if published. The model is The Phoenix Project: a struggling narrator,
-a mentor who teaches by asking, real work with real numbers. The
-chapter gives the deeper picture. The summary after it gives the simple
+if published. The model is The Phoenix Project, where a struggling
+manager tells the story and a mentor teaches him by asking questions
+about real work. The chapter gives the deeper picture. The summary after it gives the simple
 picture and the developer's options. Read `references/sources.md` only
 when asked why.
 
@@ -32,9 +32,9 @@ The cast never changes. Use no other named characters.
 
 ## Truth
 
-- The framing is fiction, the facts are not. Every command, output,
-  number, file, finding and date in a chapter happened and is in the
-  task notes or in git.
+- Only the framing is fiction. Every command, output, number, file,
+  finding and date in a chapter happened and is in the task notes or
+  in git.
 - A day or date in the prose comes from the calendar (`date`), never
   from memory.
 - A scene may compress time or merge two sessions into one
@@ -42,10 +42,12 @@ The cast never changes. Use no other named characters.
 
 ## Chapters
 
-- One chapter per step message: problem, plan, build, review, finish. A
-  reply to a pushback continues the current chapter.
-- The title, in bold, is the step's name and a plain subtitle of at
-  most ten words taken from what happens in the scene:
+- One chapter per step: the message that presents the problem to
+  confirm, the plan to approve, the build done, the review done and the
+  task finished. A reply to pushback continues the current chapter.
+- The title, in bold, is the step's name (The Problem, The Plan, The
+  Build, The Review or The Finish), a colon, and a subtitle of at most
+  ten words in sentence case, taken from what happens in the scene:
   `**The Plan: Lose a machine on purpose**`. No dates, no wordplay. A
   step with a second chapter, such as a second pull request, gets a
   subtitle of its own.
@@ -59,13 +61,16 @@ The cast never changes. Use no other named characters.
   lesson or a summary of what the scene just showed.
 - Append each chapter, title included, to the task's final summary as
   it is written (`backlog task edit <id> --append-final-summary`), so
-  the finished task holds the whole story.
+  the finished task holds the whole story. A reply to pushback is
+  appended under the current chapter's title. After the last chapter,
+  append the finish message's summary, so the final summary also says
+  plainly what changed.
 
 ## What each step shows
 
 - **Problem:** Andrew hits the problem in concrete steps and sees what
-  goes wrong. Miles asks until Andrew names what was missing. Nobody
-  names the fix yet.
+  goes wrong. Miles asks until Andrew sees it, then names what was
+  missing or wrong. Nobody names the fix yet.
 - **Plan:** Miles proposes the change. Andrew raises the obvious
   objection, and the answer comes from what Miles checked. The chapter
   replays Andrew's opening scene with the change in place.
@@ -75,8 +80,8 @@ The cast never changes. Use no other named characters.
   and Miles says what he did about each. The rest stays in the notes.
 - **Finish:** Andrew goes back to where the story started, and now it
   works.
-- **Pushback:** when Adam questions a decision, Miles checks it at the
-  Deep level before he argues. The chapter shows what the check found,
+- **Pushback:** when Adam disagrees with a decision or proposes another
+  direction, Miles checks it at the Deep level before he argues. The chapter shows what the check found,
   for and against, and Miles hands the decision back to Adam.
 
 ## Scenes and dialogue
@@ -119,7 +124,8 @@ The cast never changes. Use no other named characters.
   - a closing line that sums up the lesson, such as "And that made all
     the difference."
   - rhetorical asides to the reader, such as "Sound familiar?"
-  - bold for emphasis, emoji in the prose, and title case in headings
+  - bold for emphasis, emoji in the prose, and title case in a
+    subtitle or any other heading
 - A listed word is allowed when it is the established name of a thing.
 
 ## The summary
@@ -132,11 +138,19 @@ After the chapter, in the agent's own voice and outside the story:
   decide, give no options and recommend nothing.
 - Then the message's usual bold closing question.
 
+## Tags
+
+- A developer reply that starts with `story:` is answered as a chapter
+  continuation, with the developer's words as Adam's line, even when
+  it is a plain question. It is appended like any chapter text.
+- A reply that starts with `dev:` is answered plainly, outside the
+  story. A step's chapter that falls due is still written and appended.
+
 ## Gotchas
 
 - A chapter that reads like a status report has lost the scene. Start
   again from what Andrew sees on his screen.
-- Miles lecturing for a whole paragraph is the agent talking, not the
-  mentor. Turn it into a question for Andrew.
+- A whole paragraph of Miles lecturing is the agent talking. Turn it
+  into a question for Andrew.
 - Adam saying something the developer never said is a false record.
   Cut the line.

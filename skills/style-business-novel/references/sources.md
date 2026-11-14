@@ -1,7 +1,7 @@
 # Sources for style-business-novel
 
-Checked on their pages on 2026-11-14. Quotes are short, for evidence
-only; no passage of the book is reproduced.
+Checked on their pages on 2026-11-14. The book is quoted only in short
+lines, as evidence.
 
 ## Why a novel
 
@@ -19,11 +19,14 @@ only; no passage of the book is reproduced.
   the book was built with Goldratt's current and future reality trees
   and core, chronic conflicts. A problem chapter is the current
   reality, the plan chapter the future one.
-- Wikipedia, "The Goal (novel)": Jonah teaches Alex "through a series
-  of telephone calls and brief meetings". Wikipedia, "Business fable":
+- Wikipedia, "The Goal (novel)"
+  (https://en.wikipedia.org/wiki/The_Goal_(novel)): Jonah teaches Alex "through a series
+  of telephone calls and brief meetings". Wikipedia, "Business fable"
+  (https://en.wikipedia.org/wiki/Business_fable):
   a fictional narrative "is meant to affect the emotions of the
   audience, unlike a conventional tome". Wikipedia, "The Five
-  Dysfunctions of a Team": "the bulk of it is written as a business
+  Dysfunctions of a Team"
+  (https://en.wikipedia.org/wiki/The_Five_Dysfunctions_of_a_Team): "the bulk of it is written as a business
   fable", and the book then sums up its model. This is the
   chapter-then-summary order.
 - "Three Observations on Leading through Writing" (IT Revolution,
@@ -41,30 +44,37 @@ only; no passage of the book is reproduced.
   talking about Erik's First Way."
 - The mentor asks until the student sees it (jbdamask's notes, page
   207): "Get serious. I asked you what work centers are your
-  constraints. Think." Wikipedia, "Socratic method": questions until
+  constraints. Think." Wikipedia, "Socratic method"
+  (https://en.wikipedia.org/wiki/Socratic_method): questions until
   "the partner is pressed to come to a conclusion on their own".
-  Reader notes (rzuquim/edu-books, chapter 15) show the same rhythm:
+  Reader notes (github.com/rzuquim/edu-books,
+  study_notes/The_Phoenix_Project/15.md) show the same rhythm:
   Bill works the idea out, then calls Erik to confirm it.
 - Concrete, counted pain: "Twenty steps involving at least six
-  different teams. ... We're losing days at each handoff." Blunt lines:
-  "you're wrong. Dead wrong."
+  different teams. ... We're losing days at each handoff." (jbdamask's
+  notes, page 234). Blunt lines: "If you think IT Operations has
+  nothing to learn from Plant Operations, you're wrong. Dead wrong."
+  (jbdamask's notes, page 91).
 - Dialogue-heavy, with characters "in their various states of distress
   and triumph", and jargon spoken by characters ("What I Learned
   Producing The Phoenix Project Audiobook", IT Revolution,
   https://itrevolution.com/articles/what-i-learned-the-phoenix-project-audiobook/).
-  The book runs to 111,000 words, too long to copy for a message.
+  The same article gives the book's length as 111,000 words, too long
+  to copy for a message.
 - "Less is more": a five-page opening became three pages and a
   six-paragraph press release a few panels in the graphic novel ("From
   Prose to Panels", IT Revolution,
   https://itrevolution.com/articles/from-prose-to-panels-the-journey-of-turning-the-phoenix-project-into-a-graphic-novel/).
   This is the reason for the 300-word cap.
-- Wikipedia, "Show, don't tell": the reader experiences the story
+- Wikipedia, "Show, don't tell"
+  (https://en.wikipedia.org/wiki/Show,_don%27t_tell): the reader experiences the story
   "through actions, words, subtext, thoughts, senses, and feelings
   rather than through the author's exposition".
 
 ## AI tells
 
-- Wikipedia, "Wikipedia:Signs of AI writing": AI vocabulary by period
+- Wikipedia, "Wikipedia:Signs of AI writing"
+  (https://en.wikipedia.org/wiki/Wikipedia:Signs_of_AI_writing): AI vocabulary by period
   (crucial, pivotal, key, underscore, showcase, highlight, enhance,
   foster, leverage, quietly and others), negative parallelisms ("Not
   just X, but also Y", "Not X, but Y", "Y rather than X"), the rule of

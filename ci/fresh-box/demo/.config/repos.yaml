@@ -1,0 +1,6 @@
+# The code repos of the demo project, which the fresh-box CI job pulls.
+repos:
+  - name: "pcr-library"
+    url: "https://github.com/tired-labs/pcr-library.git"
+  - name: "tiredize"
+    url: "https://github.com/tired-labs/tiredize.git"

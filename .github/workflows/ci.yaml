@@ -6,6 +6,88 @@ on:
     branches: [main]
 
 jobs:
+  fresh-box:
+    # A bare Linux machine reaches a working setup from a clone and
+    # daeshift --install alone. macOS has no systemd, so Linux only.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # A full clone, so ~/.daeshift is cloned from a complete
+          # repository and never from a shallow one.
+          fetch-depth: 0
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13.5"
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22.23.4"
+      - name: Install pinned pi, a prerequisite
+        run: |
+          mkdir -p "${RUNNER_TEMP}/pi"
+          cp ci/fresh-box/pi/package.json ci/fresh-box/pi/package-lock.json \
+            "${RUNNER_TEMP}/pi/"
+          npm ci --prefix "${RUNNER_TEMP}/pi" --ignore-scripts \
+            --loglevel=error --no-audit --no-fund
+          echo "${RUNNER_TEMP}/pi/node_modules/.bin" >> "${GITHUB_PATH}"
+      - name: Start the user's systemd manager, as linger does on a machine
+        run: |
+          sudo loginctl enable-linger "$(id -un)"
+          runtime_dir="/run/user/$(id -u)"
+          for ((second = 0; second < 30; second++)); do
+            if [[ -S "${runtime_dir}/systemd/private" ]]; then break; fi
+            sleep 1
+          done
+          if [[ ! -S "${runtime_dir}/systemd/private" ]]; then
+            echo "The user's systemd manager did not start." >&2
+            exit 1
+          fi
+          echo "XDG_RUNTIME_DIR=${runtime_dir}" >> "${GITHUB_ENV}"
+      - name: Clone this commit into ~/.daeshift as a release
+        # The tag keeps this commit: a fresh clone would check out the
+        # newest release instead.
+        run: |
+          git tag v0.0.0-ci
+          git -c advice.detachedHead=false clone --quiet --branch v0.0.0-ci \
+            "${GITHUB_WORKSPACE}" ~/.daeshift
+      - name: daeshift --install
+        run: |
+          echo y | ~/.daeshift/bin/daeshift --install
+          tools=~/.daeshift/local/tools
+          echo ~/.daeshift/bin >> "${GITHUB_PATH}"
+          echo "${tools}/bin" >> "${GITHUB_PATH}"
+          echo "${tools}/node/node_modules/.bin" >> "${GITHUB_PATH}"
+      - name: Add the demo project and turn on its services
+        run: |
+          cp -R ci/fresh-box/demo "${RUNNER_TEMP}/demo"
+          # The board is written here: a code repo commits no board.
+          mkdir "${RUNNER_TEMP}/demo/backlog"
+          cat > "${RUNNER_TEMP}/demo/backlog/config.yml" <<'EOF'
+          project_name: "demo"
+          default_status: "To Do"
+          statuses: ["To Do", "In Progress", "Done"]
+          projects: ["_project", "pcr-library", "tiredize"]
+          auto_commit: false
+          EOF
+          git -C "${RUNNER_TEMP}/demo" init --quiet --initial-branch main
+          git -C "${RUNNER_TEMP}/demo" add --all
+          git -C "${RUNNER_TEMP}/demo" -c user.name=CI \
+            -c user.email=ci@example.com commit --quiet -m "Demo project"
+          daeshift --add-project "${RUNNER_TEMP}/demo"
+          yq -i '.projects.demo.board = 4800
+            | .projects.demo.repos["pcr-library"] = 4801
+            | .projects.demo.repos.tiredize = 4802' \
+            ~/.daeshift/local/config.yaml
+          echo y | daeshift --install
+      - name: Check the fresh box
+        run: ~/.daeshift/ci/check-fresh-box
+      - name: Show the services after a failure
+        if: failure()
+        run: |
+          systemctl --user status 'backlog-*' 'groma-*' --no-pager || true
+          journalctl --user --no-pager -n 200 || true
+
   shellcheck:
     runs-on: ubuntu-latest
     steps:
@@ -15,7 +97,8 @@ jobs:
           ci/install-tools -q "${RUNNER_TEMP}/tools"
           echo "${RUNNER_TEMP}/tools/bin" >> "${GITHUB_PATH}"
       - run: >-
-          shellcheck bin/daeshift ci/check-root ci/install-tools libexec/install
+          shellcheck bin/daeshift ci/check-fresh-box ci/check-root
+          ci/install-tools libexec/install
           git/hooks/checks/* git/hooks/pre-commit runners/pi/launch
           tests/*.bats
 

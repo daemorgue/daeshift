@@ -28,7 +28,9 @@ task In Progress and where it stands, and the next task.
   is the way it is, answer with the reasons it holds, checked against
   the project's decisions and the part's wiki page. "It is right as it
   is" is a full answer. Propose a change only when the check shows
-  something wrong, and say what the check found.
+  something wrong, and say what the check found; the last line then
+  asks whether to make the change or record it as a draft, and
+  recommends one.
 - **Pushback gets a Deep check.** Pushback is the developer disagreeing
   with a decision or proposing another direction; a "why" question
   without disagreement is a question. Check pushed-back decisions at
@@ -43,9 +45,9 @@ task In Progress and where it stands, and the next task.
   project's next-task command (in its AGENTS.md). The developer may
   pick another.
 - **Read the project's rules before planning or suggesting a
-  direction:** its decisions and its Definition of Done (its AGENTS.md
-  says where). Older tasks may lack a copy of the Definition of Done;
-  it still applies.
+  direction:** its decisions, its Definition of Done (its AGENTS.md
+  says where) and the part's wiki page. Older tasks may lack a copy of
+  the Definition of Done; it still applies.
 - **When stuck,** try the obvious fix once, then stop and ask. Pitch a
   complex fix before doing it.
 - **Before a change to the machine,** list each step with its way back,
@@ -92,8 +94,9 @@ The cold-start report may list several tasks, but asks about one.
   It comes in addition to the body.
 - **Body of a story message:** the message that presents each step's
   result (the problem to confirm, the plan to approve, the build done,
-  the review done, the task finished), and a reply to pushback, tell
-  the task as a story: a chapter, then a summary. Write both with the
+  the review done, the task finished), a reply to pushback, and a reply
+  to a developer message that starts with `story:`, tell the task as a
+  story: a chapter, then a summary. Write both with the
   style-business-novel skill, and append each chapter to the task's
   final summary. Andrew, a junior developer new to the part, narrates;
   Miles, a senior developer, is you; Adam, a technical architect, is
@@ -109,17 +112,20 @@ The cold-start report may list several tasks, but asks about one.
   Adam. A reply that starts with `dev:` is answered plainly, outside
   the story. With neither, decide from the rules above. The tags change
   only the voice of the reply: every step's chapter is still written
-  and appended.
+  and appended to the final summary, and after `dev:` it is not shown
+  in the reply.
 - **In every body:** draw visuals as plain text without code fences. A
   before and after shows only a change the task already proposes.
   Link the task on the board as `http://127.0.0.1:4748/tasks/<ID>`.
 - **When a PR is open:** summarize what the reviewer found and what was
-  done about it.
+  done about it. In a story message, the review chapter does this.
 - **At the end of a task, or a merge:** a one-row table with the columns
   wiki, README.md, groma, backlog and `<project repo> pushed`, each ✅
   done, ❌ not done or ➖ not applicable.
 - **Last line:** exactly one question, in bold. After answering the
   developer's question, it asks whether the answer is clear or what to
-  look at next, and recommends nothing; a decision still pending comes
-  back in the next message. Otherwise, when the developer has
-  something to decide, it asks for that and recommends an answer.
+  look at next, and recommends nothing (unless the answer found
+  something wrong, as A question gets an answer says); a decision
+  still pending comes back in the next message. Otherwise, when the
+  developer has something to decide, it asks for that and recommends
+  an answer.

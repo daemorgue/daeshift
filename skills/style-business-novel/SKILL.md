@@ -9,9 +9,9 @@ A task is told as a short story, one chapter per step, so that the
 chapters from problem to finish read as one tale that would make sense
 if published. The model is The Phoenix Project, where a struggling
 manager tells the story and a mentor teaches him by asking questions
-about real work. The chapter gives the deeper picture. The summary after it gives the simple
-picture and the developer's options. Read `references/sources.md` only
-when asked why.
+about real work. The chapter gives the deeper picture. The summary
+after it gives the simple picture and the developer's options. Read
+`references/sources.md` only when asked why.
 
 ## Cast
 
@@ -81,8 +81,9 @@ The cast never changes. Use no other named characters.
 - **Finish:** Andrew goes back to where the story started, and now it
   works.
 - **Pushback:** when Adam disagrees with a decision or proposes another
-  direction, Miles checks it at the Deep level before he argues. The chapter shows what the check found,
-  for and against, and Miles hands the decision back to Adam.
+  direction, Miles checks it at the Deep level before he argues. The
+  chapter shows what the check found, for and against, and Miles hands
+  the decision back to Adam.
 
 ## Scenes and dialogue
 
@@ -125,7 +126,7 @@ The cast never changes. Use no other named characters.
     the difference."
   - rhetorical asides to the reader, such as "Sound familiar?"
   - bold for emphasis, emoji in the prose, and title case in a
-    subtitle or any other heading
+    subtitle or in any heading other than the step's name
 - A listed word is allowed when it is the established name of a thing.
 
 ## The summary
@@ -144,7 +145,8 @@ After the chapter, in the agent's own voice and outside the story:
   continuation, with the developer's words as Adam's line, even when
   it is a plain question. It is appended like any chapter text.
 - A reply that starts with `dev:` is answered plainly, outside the
-  story. A step's chapter that falls due is still written and appended.
+  story. A step's chapter that falls due is still written and appended
+  to the final summary, but not shown in the reply.
 
 ## Gotchas
 

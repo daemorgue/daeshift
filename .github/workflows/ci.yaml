@@ -43,8 +43,8 @@ jobs:
         # newest release instead.
         run: |
           git tag v0.0.0-ci
-          git clone --quiet --branch v0.0.0-ci "${GITHUB_WORKSPACE}" \
-            ~/.daeshift
+          git -c advice.detachedHead=false clone --quiet --branch v0.0.0-ci \
+            "${GITHUB_WORKSPACE}" ~/.daeshift
       - name: daeshift --install
         run: |
           echo y | ~/.daeshift/bin/daeshift --install

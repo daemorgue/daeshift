@@ -101,6 +101,9 @@ check_services() {
   services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" "$1/config.yaml")" \
     || return 1
   while IFS=$'\t' read -r kind project repo port; do
+    if [[ -z "${kind}" ]]; then
+      continue
+    fi
     if [[ "${kind}" == "board" ]]; then
       unit="backlog-${project}.service"
     else

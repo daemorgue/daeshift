@@ -155,14 +155,15 @@ check_pins() {
   local tasks
 
   # Each element is a Markdown file, at any depth, whose frontmatter
-  # holds its ID at groma.id.
+  # holds its ID at groma.id; index.md and project.md describe the map.
   while IFS= read -r file; do
     element="$("$1/tools/bin/yq" --front-matter=extract '.groma.id // ""' \
       "${file}")" || continue
     if [[ -n "${element}" ]]; then
       elements+=("${element}")
     fi
-  done < <(find "${project_dir}/maps/$3" -name '*.md')
+  done < <(find "${project_dir}/maps/$3" -name '*.md' ! -name index.md \
+    ! -name project.md)
   if [[ "${#elements[@]}" -eq 0 ]]; then
     fail "The map of $3 has no element to pin a task to."
     return

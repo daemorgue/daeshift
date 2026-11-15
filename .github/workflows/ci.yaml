@@ -81,10 +81,13 @@ jobs:
           for repo in daeshift-demo-repo-01 daeshift-demo-repo-02; do
             # The first element ID found anywhere in the repo's map;
             # index.md and project.md describe the map itself.
-            ids="$(find maps/"${repo}" -name '*.md' ! -name index.md \
-              ! -name project.md -exec yq --front-matter=extract \
-              '.groma.id | select(. != null)' {} +)"
-            element="${ids%%$'\n'*}"
+            element=""
+            while IFS= read -r file; do
+              element="$(yq --front-matter=extract '.groma.id // ""' \
+                "${file}" 2>/dev/null)" || continue
+              if [[ -n "${element}" ]]; then break; fi
+            done < <(find maps/"${repo}" -name '*.md' ! -name index.md \
+              ! -name project.md)
             if [[ -z "${element}" ]]; then
               echo "maps/${repo} has no element with a groma.id." >&2
               exit 1

@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+
+# new-project: create a project repo from daeshift's templates, with the
+# layout of the wiki's project-repo page, and commit it once. Never uses
+# the network. Started by "daeshift --new-project NAME"; run
+# "new-project --help" for usage.
+
+set -o nounset
+set -o pipefail
+
+readonly NAME_PATTERN='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+# Each template in templates/project/ and its place in the project
+# repo, as "template:destination". A template ending in .in has @NAME@
+# replaced by the project's name.
+readonly TEMPLATES=(
+  "AGENTS.md.in:AGENTS.md"
+  "backlog-config.yml.in:backlog/config.yml"
+  "gitignore:.gitignore"
+  "next-task.expected:.config/next-task.expected"
+  "next-task.jq:.config/next-task.jq"
+  "next-task.test.json:.config/next-task.test.json"
+  "pre-commit-_code.yaml.in:.config/pre-commit/_code.yaml"
+  "pre-commit-_project.yaml.in:.config/pre-commit/_project.yaml"
+  "repos.yaml.in:.config/repos.yaml"
+  "wiki-README.md.in:wiki/README.md"
+)
+
+# Every outside program new-project runs. check_dependencies reports
+# each missing one before any work starts.
+dependencies=(cp dirname git mkdir mv rm sed touch)
+quiet="false"
+
+### Helpers begin
+err() { echo "[!] $*" >&2; }
+
+good() {
+  if [[ "${quiet}" == "false" ]]; then
+    echo "[+] $*"
+  fi
+}
+
+warn() { echo "[-] $*"; }
+### Helpers end
+
+# Reports every program in dependencies that is missing. Fails if any
+# is missing.
+check_dependencies() {
+  local missing="false"
+  local program
+
+  for program in "${dependencies[@]}"; do
+    if ! command -v "${program}" >/dev/null 2>&1; then
+      err "${program} was not found. Install it with your system's" \
+        "package manager."
+      missing="true"
+    fi
+  done
+  if [[ "${missing}" == "true" ]]; then
+    return 1
+  fi
+}
+
+# Copies every template from folder $1 into the new repo $2, filling in
+# project name $3.
+copy_templates() {
+  local destination
+  local entry
+  local template
+
+  for entry in "${TEMPLATES[@]}"; do
+    template="$1/${entry%%:*}"
+    destination="$2/${entry#*:}"
+    mkdir -p "${destination%/*}" || return 1
+    if [[ "${template}" == *.in ]]; then
+      # The name holds only letters, digits, ".", "_" and "-", so it is
+      # safe in the replacement.
+      sed "s/@NAME@/$3/g" "${template}" > "${destination}" || return 1
+    else
+      cp "${template}" "${destination}" || return 1
+    fi
+  done
+}
+
+# Builds project $2 in folder $1: git init on main, the templates from
+# folder $3, repositories/.gitkeep and one commit.
+create_repo() {
+  git init --quiet --initial-branch=main "$1" || return 1
+  copy_templates "$3" "$1" "$2" || return 1
+  mkdir -p "$1/repositories" || return 1
+  touch "$1/repositories/.gitkeep" || return 1
+  git -C "$1" add --all || return 1
+  git -C "$1" commit --quiet -m "Board: Create the $2 project"
+}
+
+main() {
+  local code_dir
+  local daeshift_home="${HOME}/.daeshift"
+  local name
+  local project_dir
+  local projects_dir
+  local script_dir
+  local work_dir
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      "--")
+        shift
+        break
+        ;;
+      "-h"|"--help") usage 0 ;;
+      "-q"|"--quiet") quiet="true" ;;
+      "-"*) usage 1 >&2 ;;
+      *) break ;;
+    esac
+    shift
+  done
+  if [[ $# -ne 1 ]]; then
+    usage 1 >&2
+  fi
+  name="$1"
+  if [[ -n "${DAESHIFT_HOME:-}" ]]; then
+    daeshift_home="${DAESHIFT_HOME}"
+  fi
+
+  check_dependencies || exit 1
+  script_dir="$(dirname "$0")" || exit 1
+  code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
+  projects_dir="${daeshift_home}/local/projects"
+  project_dir="${projects_dir}/${name}"
+  if [[ ! "${name}" =~ ${NAME_PATTERN} ]]; then
+    err "'${name}' is not a plain project name. Use letters, digits, '.'," \
+      "'_' and '-', starting with a letter or digit."
+    exit 1
+  fi
+  if [[ ! -d "${projects_dir}" ]]; then
+    err "daeshift is not set up on this machine. Run daeshift --install."
+    exit 1
+  fi
+  if [[ -e "${project_dir}" ]]; then
+    err "${project_dir} already exists. Choose another name."
+    exit 1
+  fi
+  # Read from the projects folder, where the commit happens, not from
+  # wherever the command was started.
+  if [[ -z "$(git -C "${projects_dir}" config user.name)" \
+    || -z "$(git -C "${projects_dir}" config user.email)" ]]; then
+    err "git has no identity yet: git config --global user.name" \
+      "\"Your Name\"; git config --global user.email you@example.com"
+    exit 1
+  fi
+
+  # Built in a hidden folder, so a failure leaves no half-made project
+  # in the project list.
+  work_dir="${projects_dir}/.${name}.new"
+  if ! rm -rf "${work_dir}"; then
+    err "${work_dir} is left from an earlier run and could not be" \
+      "removed. Remove it, then try again."
+    exit 1
+  fi
+  # The second check stops mv from moving the work folder into a
+  # project folder that appeared while it was built.
+  if ! create_repo "${work_dir}" "${name}" "${code_dir}/templates/project" \
+    || [[ -e "${project_dir}" ]] \
+    || ! mv "${work_dir}" "${project_dir}"; then
+    rm -rf "${work_dir}"
+    err "Project ${name} was not created. Check the message above, then" \
+      "try again."
+    exit 1
+  fi
+  good "Created project ${name} in ${project_dir}"
+  warn "${name} has no remote yet. Create an empty repository for it," \
+    "then run: git -C ${project_dir} remote add origin URL &&" \
+    "git -C ${project_dir} push -u origin main"
+  good "Start a session with: daeshift --project ${name}"
+}
+
+# Prints the help text, then exits with the code it is given.
+usage() {
+  cat <<'EOF'
+Usage: new-project [OPTIONS] NAME
+
+DESCRIPTION
+    Create the project repo NAME in $DAESHIFT_HOME/local/projects/ from
+    daeshift's templates, and commit it once. Uses no network.
+
+OPTIONS
+    -h, --help       Display this help message
+    -q, --quiet      Show only warnings and errors
+
+ENVIRONMENT
+    DAESHIFT_HOME    Where local/projects/ lives (default: ~/.daeshift)
+EOF
+  exit "$1"
+}
+
+main "$@"

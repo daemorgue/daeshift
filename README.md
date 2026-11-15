@@ -45,6 +45,7 @@ runners/
     extensions/   code that adds commands and checks to pi
     agents/       roles, read by the subagent extension
 services/systemd/ templates for the board and map services
+templates/project/ the files a new project starts from
 ci/check-root     the check that keeps the root free of instruction files
 tests/            tests for daeshift's scripts
 LICENSE
@@ -103,6 +104,28 @@ session in every project. So the root never holds `AGENTS.md`,
    Later, `daeshift --project daemorgue --pull` brings the project and
    its code repos up to date. It only fast-forwards: a repo with
    changes or on another branch is skipped and left as it is.
+
+## How to create a project
+
+`--new-project` makes a new project repo in `local/projects/`, with an
+empty board, the Definition of Done, a wiki start page, the next-task
+command and the git hook settings. It commits once and doesn't touch
+the network:
+
+```
+$ daeshift --new-project demo
+```
+
+To share it, create an empty repository on your Git host, then add it
+as the remote and push, as the command prints:
+
+```
+$ git -C ~/.daeshift/local/projects/demo remote add origin git@github.com:you/demo.git
+$ git -C ~/.daeshift/local/projects/demo push -u origin main
+```
+
+List code repos in its `.config/repos.yaml`, then run
+`daeshift --project demo --pull` to clone them.
 
 ## How to start a session
 

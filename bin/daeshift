@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
-# daeshift: start an agent session in a project, list, add or pull the
-# projects, or set up, update or roll back daeshift on this machine.
+# daeshift: start an agent session in a project, list, create, add or
+# pull the projects, or set up, update or roll back daeshift on this
+# machine.
 # Projects live in $DAESHIFT_HOME/local/projects/ (DAESHIFT_HOME defaults
 # to ~/.daeshift), and $DAESHIFT_HOME/local/config.yaml names the agent
 # tool to start (runner: pi). Run "daeshift --help" for usage.
@@ -57,11 +58,13 @@ list_folders() {
 main() {
   local add_url=""
   local code_dir
+  local creator=()
   local daeshift_home="${HOME}/.daeshift"
   local install="false"
   local installer=()
   local list="false"
   local name=""
+  local new_project=""
   local project=""
   local pull="false"
   local puller=()
@@ -93,6 +96,13 @@ main() {
         name="$2"
         shift
         ;;
+      "--new-project")
+        if [[ $# -lt 2 || -z "$2" ]]; then
+          usage 1 >&2
+        fi
+        new_project="$2"
+        shift
+        ;;
       "--project")
         if [[ $# -lt 2 ]]; then
           usage 1 >&2
@@ -101,7 +111,8 @@ main() {
         shift
         ;;
       "--pull") pull="true" ;;
-      # Only the installer and pull print progress, so -q is passed on.
+      # Only the installer, pull and new-project print progress, so -q
+      # is passed on.
       "-q"|"--quiet") quiet="true" ;;
       "--release")
         if [[ $# -lt 2 || -z "$2" ]]; then
@@ -117,7 +128,9 @@ main() {
   done
   if [[ -n "${name}" && -z "${add_url}" ]] \
     || [[ "${pull}" == "true" && -z "${project}" ]] \
-    || [[ "${pull}" == "true" && -n "${add_url}" ]]; then
+    || [[ "${pull}" == "true" && -n "${add_url}" ]] \
+    || [[ -n "${new_project}" && ( -n "${add_url}" || "${pull}" == "true" ) ]]
+  then
     usage 1 >&2
   fi
   if [[ -n "${DAESHIFT_HOME:-}" ]]; then
@@ -140,6 +153,12 @@ main() {
       installer+=("--update")
     fi
     exec "${installer[@]}"
+  elif [[ -n "${new_project}" ]]; then
+    creator=("${code_dir}/libexec/new-project")
+    if [[ "${quiet}" == "true" ]]; then
+      creator+=("--quiet")
+    fi
+    exec "${creator[@]}" -- "${new_project}"
   elif [[ -n "${add_url}" || "${pull}" == "true" ]]; then
     puller=("${code_dir}/libexec/pull")
     if [[ "${quiet}" == "true" ]]; then
@@ -227,8 +246,8 @@ usage() {
 Usage: daeshift [OPTIONS]
 
 DESCRIPTION
-    Start an agent session in a project, list, add or pull the projects,
-    or set up, update or roll back daeshift on this machine.
+    Start an agent session in a project, list, create, add or pull the
+    projects, or set up, update or roll back daeshift on this machine.
 
 OPTIONS
         --add-project URL
@@ -238,6 +257,8 @@ OPTIONS
         --list-projects   List the projects
         --name NAME       With --add-project: the project's name (default:
                           the URL's last part without .git)
+        --new-project NAME
+                          Create the project NAME, ready to push
         --project NAME    Start a session in the project NAME
         --pull            With --project: fast-forward the project and its
                           code repos, cloning missing ones

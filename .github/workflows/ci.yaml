@@ -17,7 +17,7 @@ jobs:
       - run: >-
           shellcheck bin/daeshift ci/check-root ci/install-tools libexec/install
           git/hooks/checks/* git/hooks/pre-commit runners/pi/launch
-          tests/*.bats
+          libexec/new-project tests/*.bats
 
   test:
     strategy:

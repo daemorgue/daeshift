@@ -60,24 +60,11 @@ jobs:
           echo "${tools}/node/node_modules/.bin" >> "${GITHUB_PATH}"
       - name: Add the demo project and turn on its services
         run: |
-          cp -R ci/fresh-box/demo "${RUNNER_TEMP}/demo"
-          # The board is written here: a code repo commits no board.
-          mkdir "${RUNNER_TEMP}/demo/backlog"
-          cat > "${RUNNER_TEMP}/demo/backlog/config.yml" <<'EOF'
-          project_name: "demo"
-          default_status: "To Do"
-          statuses: ["To Do", "In Progress", "Done"]
-          projects: ["_project", "pcr-library", "tiredize"]
-          auto_commit: false
-          EOF
-          git -C "${RUNNER_TEMP}/demo" init --quiet --initial-branch main
-          git -C "${RUNNER_TEMP}/demo" add --all
-          git -C "${RUNNER_TEMP}/demo" -c user.name=CI \
-            -c user.email=ci@example.com commit --quiet -m "Demo project"
-          daeshift --add-project "${RUNNER_TEMP}/demo"
-          yq -i '.projects.demo.board = 4800
-            | .projects.demo.repos["pcr-library"] = 4801
-            | .projects.demo.repos.tiredize = 4802' \
+          daeshift --add-project \
+            https://github.com/daemorgue/daeshift-demo-project.git
+          yq -i '.projects["daeshift-demo-project"] = {"board": 4800,
+            "repos": {"daeshift-demo-repo-01": 4801,
+                      "daeshift-demo-repo-02": 4802}}' \
             ~/.daeshift/local/config.yaml
           echo y | daeshift --install
       - name: Check the fresh box

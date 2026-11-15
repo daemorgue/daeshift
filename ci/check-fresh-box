@@ -104,10 +104,13 @@ check_no_services() {
     fail "$1/config.yaml sets services; run with --services to check them."
     return
   fi
-  active="$(systemctl --user list-units --state=active --no-legend \
-    --plain 'backlog-*' 'groma-*')" || return 1
+  # Unit files catch a unit that is set up but not running; units in
+  # any state catch one that is loaded without a file of its own.
+  active="$(systemctl --user list-unit-files --no-legend 'backlog-*' \
+    'groma-*' && systemctl --user list-units --all --no-legend --plain \
+    'backlog-*' 'groma-*')" || return 1
   if [[ -n "${active}" ]]; then
-    fail "A service is active with no port set: ${active}"
+    fail "A board or map service is set up with no port set: ${active}"
     return
   fi
   good "No board or map service is set up or running"
@@ -120,6 +123,7 @@ check_no_services() {
 check_projects() {
   local bin="$1/tools/node/node_modules/.bin"
   local project
+  local projects=0
   local repo
   local repos
 
@@ -128,6 +132,7 @@ check_projects() {
       continue
     fi
     project="${project%/}"
+    projects=$((projects + 1))
     if ! (cd "${project}" && "${bin}/backlog" task list --plain \
       >/dev/null); then
       fail "backlog could not read the board of ${project}."
@@ -137,8 +142,15 @@ check_projects() {
     else
       good "${project##*/}: backlog reads the board; next-task runs"
     fi
-    repos="$("$1/tools/bin/yq" '.repos[].name' \
-      "${project}/.config/repos.yaml")" || return 1
+    if ! repos="$("$1/tools/bin/yq" '.repos[].name' \
+      "${project}/.config/repos.yaml")"; then
+      fail "${project}/.config/repos.yaml could not be read."
+      continue
+    fi
+    if [[ -z "${repos}" ]]; then
+      fail "${project}/.config/repos.yaml lists no repo."
+      continue
+    fi
     while IFS= read -r repo; do
       if [[ -z "${repo}" ]]; then
         continue
@@ -146,12 +158,17 @@ check_projects() {
       check_repo "${bin}" "${project}/repositories/${repo}"
     done <<<"${repos}"
   done
+  if [[ "${projects}" -eq 0 ]]; then
+    fail "No project found in $1/projects."
+  fi
 }
 
 # Checks one clone, $2: it is a git clone, and groma, from folder $1,
 # reads its map. Reports a failure and goes on.
 check_repo() {
-  if ! git -C "$2" rev-parse --git-dir >/dev/null 2>&1; then
+  # A folder that is not a clone would answer for the project repo
+  # around it, so the clone must be its own top level.
+  if [[ ! -e "$2/.git" ]]; then
     fail "$2 is not cloned."
   elif ! (cd "$2" && "$1/groma" view --plain >/dev/null); then
     fail "groma could not read the map of $2."
@@ -315,8 +332,9 @@ Usage: check-fresh-box [OPTIONS]
 
 DESCRIPTION
     Check that daeshift --install set this machine up: the layout under
-    local/, the pinned tools' versions, and each project's repos read by
-    backlog and groma with no service running.
+    local/, the pinned tools' versions, each project's repos read by
+    backlog and groma, and either no service set up, or, with
+    --services, each service in config.yaml answering.
 
 OPTIONS
     -h, --help       Display this help message

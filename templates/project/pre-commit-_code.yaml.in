@@ -1,0 +1,33 @@
+# pre-commit hooks for every code repo in the @NAME@ project, run by
+# daeshift's git hook dispatcher before a repo's own <repo>.yaml.
+# daeshift's own checks are named by command; the dispatcher puts them
+# on PATH.
+repos:
+  - repo: local
+    hooks:
+      - id: branch-check
+        name: commits only on task branches
+        entry: daeshift-branch-check
+        language: unsupported
+        args: [--allow, 'tasks/*']
+        stages: [pre-commit, pre-merge-commit, pre-push]
+        pass_filenames: false
+        always_run: true
+      - id: task-check
+        name: the branch's task is ready to be worked
+        entry: daeshift-task-check
+        language: unsupported
+        stages: [pre-commit, pre-merge-commit, pre-push]
+        pass_filenames: false
+        always_run: true
+      - id: commit-prefix
+        name: the subject names its task
+        entry: daeshift-commit-prefix
+        language: unsupported
+        args: [--match-branch]
+        stages: [commit-msg]
+      - id: no-ai-attribution
+        name: no AI attribution
+        entry: daeshift-no-ai-attribution
+        language: unsupported
+        stages: [commit-msg]

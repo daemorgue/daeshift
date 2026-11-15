@@ -1,0 +1,4 @@
+# Code repos are cloned here, each with its own git history. The
+# .gitkeep is kept, so the folder is there in a fresh clone.
+repositories/*
+!repositories/.gitkeep

@@ -1,0 +1,183 @@
+{
+"tasks": [
+{
+"id": "A",
+"status": "In Progress",
+"priority": "high",
+"ordinal": 1,
+"title": "a",
+"isReady": true
+},
+{
+"id": "A.1",
+"parentTaskId": "A",
+"status": "To Do",
+"priority": "high",
+"ordinal": 2,
+"title": "a1",
+"isReady": true
+},
+{
+"id": "A.1.1",
+"parentTaskId": "A.1",
+"status": "In Progress",
+"priority": "low",
+"ordinal": 3,
+"title": "a11",
+"isReady": true
+},
+{
+"id": "P",
+"status": "In Progress",
+"priority": "high",
+"ordinal": 4,
+"title": "p",
+"isReady": true
+},
+{
+"id": "P.1",
+"parentTaskId": "P",
+"status": "To Do",
+"priority": "high",
+"ordinal": 5,
+"title": "p1",
+"isReady": true
+},
+{
+"id": "P.2",
+"parentTaskId": "P",
+"status": "In Progress",
+"priority": "low",
+"ordinal": 6,
+"title": "p2",
+"isReady": true
+},
+{
+"id": "P.2.1",
+"parentTaskId": "P.2",
+"status": "To Do",
+"priority": "low",
+"ordinal": 7,
+"title": "p21",
+"isReady": true
+},
+{
+"id": "P.3",
+"parentTaskId": "P",
+"status": "To Do",
+"priority": "low",
+"ordinal": 8,
+"title": "p3",
+"isReady": true
+},
+{
+"id": "P.3.1",
+"parentTaskId": "P.3",
+"status": "To Do",
+"priority": "low",
+"ordinal": 9,
+"title": "p31",
+"isReady": false
+},
+{
+"id": "Q",
+"status": "To Do",
+"priority": "high",
+"ordinal": 10,
+"title": "q",
+"isReady": true
+},
+{
+"id": "Q.1",
+"parentTaskId": "Q",
+"status": "In Progress",
+"priority": "medium",
+"ordinal": 11,
+"title": "q1",
+"isReady": true
+},
+{
+"id": "Q.2",
+"parentTaskId": "Q",
+"status": "To Do",
+"priority": "medium",
+"ordinal": 12,
+"title": "q2",
+"isReady": true
+},
+{
+"id": "D",
+"status": "Done",
+"priority": "high",
+"ordinal": 13,
+"title": "d",
+"isReady": true
+},
+{
+"id": "D.1",
+"parentTaskId": "D",
+"status": "To Do",
+"priority": "low",
+"ordinal": 14,
+"title": "d1",
+"isReady": true
+},
+{
+"id": "E",
+"status": "To Do",
+"priority": "low",
+"ordinal": 15,
+"title": "e",
+"isReady": true
+},
+{
+"id": "F",
+"status": "To Do",
+"ordinal": 16,
+"title": "f",
+"isReady": true
+},
+{
+"id": "M",
+"status": "In Progress",
+"priority": "medium",
+"ordinal": 17,
+"title": "m",
+"isReady": true
+},
+{
+"id": "M.1",
+"parentTaskId": "M",
+"status": "Done",
+"priority": "medium",
+"ordinal": 18,
+"title": "m1",
+"isReady": true
+},
+{
+"id": "M.1.1",
+"parentTaskId": "M.1",
+"status": "To Do",
+"priority": "medium",
+"ordinal": 19,
+"title": "m11",
+"isReady": true
+},
+{
+"id": "M.1.1.1",
+"parentTaskId": "M.1.1",
+"status": "In Progress",
+"priority": "medium",
+"ordinal": 20,
+"title": "m111",
+"isReady": true
+},
+{
+"id": "N",
+"status": "To Do",
+"priority": "low",
+"title": "n, no ordinal",
+"isReady": true
+}
+]
+}

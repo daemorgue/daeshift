@@ -1,0 +1,34 @@
+# @NAME@ project
+
+This folder is the @NAME@ project repository. This file only says
+where to look; it holds no rules.
+
+## Where things live
+
+- `backlog/`: the Backlog.md board, with tasks, drafts, decisions
+  (`backlog/decisions/`) and documents (`backlog/docs/`).
+- `wiki/`: how the project works. `wiki/README.md` is the start, and
+  `wiki/<repo>/` holds each code repository's pages; each part's page
+  is its binding specification.
+- `maps/<repo>/`: the groma architecture map of each code repository.
+- `.config/repos.yaml`: the code repositories, each cloned in
+  `repositories/<repo>/`.
+
+## Where the rules live
+
+- How every session works and writes to the developer: daeshift's
+  instructions, which every session receives.
+- This project's choices: the decisions, listed by
+  `backlog decision list --plain`.
+- What "done" means for a task: the Definition of Done in
+  `backlog/config.yml`, copied into every new task.
+
+## Next-task command
+
+daeshift's cold start runs this command. It lists the tasks to work
+next, in the order `.config/next-task.jq` sets:
+
+    backlog task list --json | jq -r -f .config/next-task.jq
+
+A session assumes no earlier history: everything it needs is on the
+board, in the wiki and in git.

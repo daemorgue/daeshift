@@ -1,0 +1,17 @@
+project_name: "@NAME@"
+default_status: "To Do"
+statuses: ["To Do", "In Progress", "Done"]
+labels: []
+projects: ["_project"]
+definition_of_done: ["Every acceptance criterion is checked, with its evidence in the task notes","A criterion a later change could break has a test that stays in the suite; a one-time change has its check and result in the task notes","Checks pass for what the change touches: ShellCheck and bats for bash, tiredize for Markdown, schema checks for YAML","CI passes on Linux and macOS when the change touches code that runs on both","The README is updated in the same PR when what a user runs or sees changes","The PR changes at most 400 lines, not counting license text or generated files; 401 to 500 needs the developer's approval; more than 500 is split into several PRs","The repo's groma map and the project wiki describe the merged change at every C4 level it touches; the map alone does not meet this item","A choice later work depends on is recorded as a decision","The developer merged the PR, and main has the change","The task has a final summary","Before the PR opens, a fresh agent session that wrote none of the change reviewed the diff against the task's criteria and the relevant skills; its findings and what was done about each are in the task notes"]
+date_format: yyyy-mm-dd
+max_column_width: 20
+auto_open_browser: false
+default_port: 6420
+remote_operations: false
+auto_commit: false
+filesystem_only: false
+bypass_git_hooks: false
+check_active_branches: false
+active_branch_days: 30
+task_prefix: "task"

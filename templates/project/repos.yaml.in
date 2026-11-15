@@ -1,0 +1,6 @@
+# The code repos in the @NAME@ project. Each is cloned into
+# repositories/<name>/. Add one as a list item with a name and a url,
+# such as:
+#   - name: "site"
+#     url: "git@github.com:example/site.git"
+repos: []

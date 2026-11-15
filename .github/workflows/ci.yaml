@@ -74,7 +74,29 @@ jobs:
                       "daeshift-demo-repo-02": 4802}}' \
             ~/.daeshift/local/config.yaml
           echo y | daeshift --install
-      - name: Check the board and maps answer
+      - name: Put a task on each demo map
+        # On the runner only: the tasks are never committed or pushed.
+        run: |
+          cd ~/.daeshift/local/projects/daeshift-demo-project
+          for repo in daeshift-demo-repo-01 daeshift-demo-repo-02; do
+            element="$(yq --front-matter=extract '.groma.id' \
+              maps/"${repo}"/actors/*.md)"
+            backlog task create "Fresh-box task on ${repo}" \
+              --project "${repo}" --ref "${element}" --plain >/dev/null
+          done
+      - name: Check the board and maps answer and show the tasks
+        run: ~/.daeshift/ci/check-fresh-box --services
+      - name: Take the second map's service away
+        run: |
+          yq -i 'del(.projects["daeshift-demo-project"].repos
+            ["daeshift-demo-repo-02"])' ~/.daeshift/local/config.yaml
+          echo y | daeshift --install
+          if curl --silent --max-time 2 --output /dev/null \
+            http://127.0.0.1:4802/; then
+            echo "Port 4802 still answers after its service was removed." >&2
+            exit 1
+          fi
+      - name: Check the rest still answer and nothing is left behind
         run: ~/.daeshift/ci/check-fresh-box --services
       - name: Show the services after a failure
         if: failure()

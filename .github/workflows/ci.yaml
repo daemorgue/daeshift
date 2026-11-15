@@ -87,7 +87,7 @@ jobs:
                 "${file}" 2>/dev/null)" || continue
               if [[ -n "${element}" ]]; then break; fi
             done < <(find maps/"${repo}" -name '*.md' ! -name index.md \
-              ! -name project.md)
+              ! -name project.md | sort)
             if [[ -z "${element}" ]]; then
               echo "maps/${repo} has no element with a groma.id." >&2
               exit 1

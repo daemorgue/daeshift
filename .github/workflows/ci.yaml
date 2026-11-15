@@ -79,8 +79,16 @@ jobs:
         run: |
           cd ~/.daeshift/local/projects/daeshift-demo-project
           for repo in daeshift-demo-repo-01 daeshift-demo-repo-02; do
-            element="$(yq --front-matter=extract '.groma.id' \
-              maps/"${repo}"/actors/*.md)"
+            # The first element ID found anywhere in the repo's map;
+            # index.md and project.md describe the map itself.
+            ids="$(find maps/"${repo}" -name '*.md' ! -name index.md \
+              ! -name project.md -exec yq --front-matter=extract \
+              '.groma.id | select(. != null)' {} +)"
+            element="${ids%%$'\n'*}"
+            if [[ -z "${element}" ]]; then
+              echo "maps/${repo} has no element with a groma.id." >&2
+              exit 1
+            fi
             backlog task create "Fresh-box task on ${repo}" \
               --project "${repo}" --ref "${element}" --plain >/dev/null
           done
@@ -91,13 +99,8 @@ jobs:
           yq -i 'del(.projects["daeshift-demo-project"].repos
             ["daeshift-demo-repo-02"])' ~/.daeshift/local/config.yaml
           echo y | daeshift --install
-          if curl --silent --max-time 2 --output /dev/null \
-            http://127.0.0.1:4802/; then
-            echo "Port 4802 still answers after its service was removed." >&2
-            exit 1
-          fi
       - name: Check the rest still answer and nothing is left behind
-        run: ~/.daeshift/ci/check-fresh-box --services
+        run: ~/.daeshift/ci/check-fresh-box --services --closed 4802
       - name: Show the services after a failure
         if: failure()
         run: |

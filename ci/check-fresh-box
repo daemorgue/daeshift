@@ -2,9 +2,11 @@
 
 # check-fresh-box: check that "daeshift --install" set this machine up:
 # the layout under local/, each pinned tool at its pinned version, and
-# each project's repos cloned and readable by backlog and groma. With no
-# --services, no service may be set up; with --services, each service
-# in local/config.yaml must be active and answer on its port. Run by the
+# each project's repos cloned, set up and readable by backlog and groma.
+# With no --services, no service may be set up; with --services, each
+# service in local/config.yaml must be active and answer on its port,
+# each map must show its repo's tasks, and no other unit may be set up.
+# --closed PORT also checks that nothing answers on PORT. Run by the
 # fresh-box CI job; run "check-fresh-box --help" for usage.
 
 set -o nounset
@@ -19,14 +21,18 @@ readonly SERVICES_QUERY='(.projects // {}) | to_entries | .[] | .key as $p
       | "board\t" + $p + "\t-\t" + (.value.board | tostring)),
     ((.value.repos // {}) | to_entries | .[]
       | "map\t" + $p + "\t" + .key + "\t" + (.value | tostring)))'
+# The paths every clone's exclude file lists (code-repos item 2).
+readonly EXCLUDES=(groma AGENTS.md AGENTS.override.md CLAUDE.md .pi/)
 # How long a service may take to answer after it started.
 readonly WAIT_SECONDS=30
 
 # Every outside program check-fresh-box runs. check_dependencies
 # reports each missing one before any work starts.
-dependencies=(cat curl dirname git jq sed sleep systemctl)
+dependencies=(cat curl cut dirname find git grep head jq readlink sed
+  sleep sort systemctl tr wc)
 failed="false"
 quiet="false"
+closed_port=""
 services="false"
 
 ### Helpers begin
@@ -131,6 +137,85 @@ check_no_services() {
   fi
 }
 
+# Checks that the map service of repo $3 of project $2, on port $4,
+# pins each task of that repo that references an element of the repo's
+# map to one of the elements it references, as groma pins a task once.
+# $1 is the local folder. Waits up to WAIT_SECONDS for the service to
+# pick the tasks up.
+check_pins() {
+  local deadline=$((SECONDS + WAIT_SECONDS))
+  local element
+  local elements=()
+  local expected
+  local file
+  local missing
+  local pinned
+  local pins
+  local project_dir="$1/projects/$2"
+  local tasks
+
+  # Each element is a Markdown file, at any depth, whose frontmatter
+  # holds its ID at groma.id; index.md and project.md describe the map.
+  while IFS= read -r file; do
+    element="$("$1/tools/bin/yq" --front-matter=extract '.groma.id // ""' \
+      "${file}" 2>/dev/null)" || continue
+    if [[ -n "${element}" ]]; then
+      elements+=("${element}")
+    fi
+  done < <(find "${project_dir}/maps/$3" -name '*.md' ! -name index.md \
+    ! -name project.md)
+  if [[ "${#elements[@]}" -eq 0 ]]; then
+    fail "The map of $3 has no element to pin a task to."
+    return
+  fi
+  if ! tasks="$(cd "${project_dir}" \
+    && "$1/tools/node/node_modules/.bin/backlog" task list --json)"; then
+    fail "backlog could not list the tasks of ${project_dir}."
+    return
+  fi
+  # One "TASK-ID element" line per reference of a task of repo $3 to an
+  # element of its map. $repo, $id and $ARGS are jq's, not the shell's.
+  # shellcheck disable=SC2016
+  if ! expected="$(jq -r --arg repo "$3" --args \
+    '.tasks[] | select(.project == $repo) | .id as $id
+      | (.references // [])[] | select(IN($ARGS.positional[]))
+      | "\($id) \(.)"' "${elements[@]}" <<<"${tasks}")"; then
+    fail "The tasks of $3 could not be read from backlog's list."
+    return
+  fi
+  if [[ -z "${expected}" ]]; then
+    fail "No task of $3 references an element of its map."
+    return
+  fi
+  while ((SECONDS < deadline)); do
+    # The stream never ends, so curl stops at --max-time; its exit status
+    # says nothing about the data it read.
+    pins="$(curl --silent --no-buffer --max-time 2 \
+        "http://127.0.0.1:$4/events" \
+      | sed -n 's/^data: //p' \
+      | head -n 1 \
+      | jq -r '.pins[]? | "\(.taskId) \(.elementId)"' 2>/dev/null)"
+    # The tasks with a pin on an element they reference, then those
+    # without one.
+    pinned="$(grep --fixed-strings --line-regexp \
+        --file=<(printf '%s\n' "${pins}") <<<"${expected}" \
+      | cut -d ' ' -f 1 \
+      | sort -u)"
+    missing="$(cut -d ' ' -f 1 <<<"${expected}" \
+      | sort -u \
+      | grep --fixed-strings --line-regexp --invert-match \
+        --file=<(printf '%s\n' "${pinned}"))"
+    if [[ -z "${missing}" ]]; then
+      good "$3's map shows $(wc -l <<<"${pinned}" | tr -d ' ') task(s)" \
+        "on elements they reference"
+      return
+    fi
+    sleep 1
+  done
+  fail "The map of $3 on port $4 does not show $(tr '\n' ' ' \
+    <<<"${missing}")after ${WAIT_SECONDS} s. Check the unit's journal."
+}
+
 # Checks each project in the projects folder: every repo its
 # .config/repos.yaml lists is cloned, backlog reads the board and the
 # next-task command runs, and groma reads each repo's map, all without
@@ -178,29 +263,58 @@ check_projects() {
   fi
 }
 
-# Checks one clone, $2: it is a git clone, and groma, from folder $1,
-# reads its map. Reports a failure and goes on.
+# Checks one clone, $2: it is a git clone of its own, its exclude file
+# lists EXCLUDES, its groma link points at its map in the project repo,
+# and groma, from folder $1, reads that map. Reports each failure and
+# goes on.
 check_repo() {
+  local exclude
+  local exclude_file
+  local missing=""
+
   # A folder that is not a clone would answer for the project repo
   # around it, so the clone must be its own top level.
   if [[ ! -e "$2/.git" ]]; then
     fail "$2 is not cloned."
+    return
+  fi
+  if ! exclude_file="$(git -C "$2" rev-parse --path-format=absolute \
+    --git-path info/exclude)"; then
+    fail "The exclude file of $2 could not be found."
+    return
+  fi
+  for exclude in "${EXCLUDES[@]}"; do
+    if ! grep --quiet --fixed-strings --line-regexp -- "${exclude}" \
+      "${exclude_file}" 2>/dev/null; then
+      missing="${missing} ${exclude}"
+    fi
+  done
+  if [[ -n "${missing}" ]]; then
+    fail "${exclude_file} does not list:${missing}."
+  fi
+  if [[ "$(readlink "$2/groma")" != "../../maps/${2##*/}" ]]; then
+    fail "$2/groma is not a link to ../../maps/${2##*/}."
   elif ! (cd "$2" && "$1/groma" view --plain >/dev/null); then
     fail "groma could not read the map of $2."
-  else
-    good "${2##*/}: cloned; groma reads its map"
+  elif [[ -z "${missing}" ]]; then
+    good "${2##*/}: cloned and set up; groma reads its map"
   fi
 }
 
 # Checks that each service in config.yaml is active and answers on its
-# port. $1 is the local folder.
+# port, that each map shows its repo's tasks on their elements, and that
+# no unit is set up beyond those services. $1 is the local folder.
 check_services() {
   local kind
+  local loaded
+  local name
   local port
   local project
   local repo
   local services
   local unit
+  local unit_file
+  local units=" "
 
   if ! services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" \
     "$1/config.yaml")"; then
@@ -217,14 +331,36 @@ check_services() {
     else
       unit="groma-${project}-${repo}.service"
     fi
+    units="${units}${unit} "
     if ! systemctl --user --quiet is-active "${unit}"; then
       fail "${unit} is not active."
     elif ! wait_for_port "${port}"; then
       fail "${unit} does not answer on port ${port}."
     else
       good "${unit} answers on port ${port}"
+      if [[ "${kind}" == "map" ]]; then
+        check_pins "$1" "${project}" "${repo}" "${port}"
+      fi
     fi
   done <<<"${services}"
+  # A service taken out of config.yaml leaves no unit behind.
+  for unit_file in "${HOME}"/.config/systemd/user/backlog-*.service \
+    "${HOME}"/.config/systemd/user/groma-*.service; do
+    if [[ -e "${unit_file}" && "${units}" != *" ${unit_file##*/} "* ]]
+    then
+      fail "${unit_file} is set up, but config.yaml sets no such service."
+    fi
+  done
+  if ! loaded="$(systemctl --user list-units --all --no-legend --plain \
+    'backlog-*' 'groma-*')"; then
+    err "systemctl could not list the user's units."
+    return 1
+  fi
+  while read -r name _; do
+    if [[ -n "${name}" && "${units}" != *" ${name} "* ]]; then
+      fail "${name} is loaded, but config.yaml sets no such service."
+    fi
+  done <<<"${loaded}"
 }
 
 # Checks that one tool reports its pinned version: one word of what it
@@ -301,6 +437,13 @@ main() {
         ;;
       "-h"|"--help") usage 0 ;;
       "-q"|"--quiet") quiet="true" ;;
+      "--closed")
+        if [[ $# -lt 2 || ! "$2" =~ ^[0-9]+$ ]]; then
+          usage 1 >&2
+        fi
+        closed_port="$2"
+        shift
+        ;;
       "--services") services="true" ;;
       *) usage 1 >&2 ;;
     esac
@@ -323,6 +466,14 @@ main() {
     check_services "${daeshift_home}/local" || exit 1
   else
     check_no_services "${daeshift_home}/local" || exit 1
+  fi
+  if [[ -n "${closed_port}" ]]; then
+    if curl --silent --max-time 2 --output /dev/null \
+      "http://127.0.0.1:${closed_port}/"; then
+      fail "Port ${closed_port} still answers."
+    else
+      good "Nothing answers on port ${closed_port}"
+    fi
   fi
   if [[ "${failed}" == "true" ]]; then
     exit 1
@@ -350,15 +501,18 @@ Usage: check-fresh-box [OPTIONS]
 
 DESCRIPTION
     Check that daeshift --install set this machine up: the layout under
-    local/, the pinned tools' versions, each project's repos read by
-    backlog and groma, and either no service set up, or, with
-    --services, each service in config.yaml answering.
+    local/, the pinned tools' versions, each project's repos cloned, set
+    up and read by backlog and groma, and either no service set up, or,
+    with --services, each service in config.yaml answering.
 
 OPTIONS
+        --closed PORT
+                     Also check that nothing answers on PORT
     -h, --help       Display this help message
     -q, --quiet      Show only warnings and errors
         --services   Check the services in config.yaml instead of their
-                     absence
+                     absence: each answers, each map shows its repo's
+                     tasks, and no other unit is set up
 
 ENVIRONMENT
     DAESHIFT_HOME    The folder that holds local/ (default: ~/.daeshift)

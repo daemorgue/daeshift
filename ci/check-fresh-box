@@ -91,29 +91,44 @@ check_layout() {
   fi
 }
 
-# Checks that config.yaml sets no service and that no daeshift unit is
-# active, since nothing is served without a port. $1 is the local
-# folder.
+# Checks that config.yaml sets no service, that no board or map unit
+# file exists where libexec/install writes them, and that no such unit
+# is loaded in any state, since nothing is served without a port. $1 is
+# the local folder.
 check_no_services() {
-  local active
+  local clean="true"
   local configured
+  local loaded
+  local unit_file
 
-  configured="$("$1/tools/bin/yq" "${SERVICES_QUERY}" "$1/config.yaml")" \
-    || return 1
+  if ! configured="$("$1/tools/bin/yq" "${SERVICES_QUERY}" \
+    "$1/config.yaml")"; then
+    err "$1/config.yaml could not be read."
+    return 1
+  fi
   if [[ -n "${configured}" ]]; then
     fail "$1/config.yaml sets services; run with --services to check them."
     return
   fi
-  # Unit files catch a unit that is set up but not running; units in
-  # any state catch one that is loaded without a file of its own.
-  active="$(systemctl --user list-unit-files --no-legend 'backlog-*' \
-    'groma-*' && systemctl --user list-units --all --no-legend --plain \
-    'backlog-*' 'groma-*')" || return 1
-  if [[ -n "${active}" ]]; then
-    fail "A board or map service is set up with no port set: ${active}"
-    return
+  for unit_file in "${HOME}"/.config/systemd/user/backlog-*.service \
+    "${HOME}"/.config/systemd/user/groma-*.service; do
+    if [[ -e "${unit_file}" ]]; then
+      fail "${unit_file} is set up with no port set."
+      clean="false"
+    fi
+  done
+  if ! loaded="$(systemctl --user list-units --all --no-legend --plain \
+    'backlog-*' 'groma-*')"; then
+    err "systemctl could not list the user's units."
+    return 1
   fi
-  good "No board or map service is set up or running"
+  if [[ -n "${loaded}" ]]; then
+    fail "A board or map unit is loaded with no port set: ${loaded}"
+    clean="false"
+  fi
+  if [[ "${clean}" == "true" ]]; then
+    good "No board or map service is set up or running"
+  fi
 }
 
 # Checks each project in the projects folder: every repo its
@@ -187,8 +202,11 @@ check_services() {
   local services
   local unit
 
-  services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" "$1/config.yaml")" \
-    || return 1
+  if ! services="$("$1/tools/bin/yq" "${SERVICES_QUERY}" \
+    "$1/config.yaml")"; then
+    err "$1/config.yaml could not be read."
+    return 1
+  fi
   if [[ -z "${services}" ]]; then
     fail "$1/config.yaml sets no service, so none was checked."
     return

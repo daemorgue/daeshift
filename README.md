@@ -45,7 +45,8 @@ runners/
     extensions/   code that adds commands and checks to pi
     agents/       roles, read by the subagent extension
 services/systemd/ templates for the board and map services
-templates/project/ the files a new project starts from
+templates/project/
+                  the files a new project starts from
 ci/check-root     the check that keeps the root free of instruction files
 tests/            tests for daeshift's scripts
 LICENSE
@@ -124,7 +125,8 @@ $ git -C ~/.daeshift/local/projects/demo remote add origin git@github.com:you/de
 $ git -C ~/.daeshift/local/projects/demo push -u origin main
 ```
 
-List code repos in its `.config/repos.yaml`, then run
+To add code repos, list each in its `.config/repos.yaml` and in
+`projects` in `backlog/config.yml`, commit and push, then run
 `daeshift --project demo --pull` to clone them.
 
 ## How to start a session

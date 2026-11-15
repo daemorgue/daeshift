@@ -70,7 +70,7 @@ copy_templates() {
   for entry in "${TEMPLATES[@]}"; do
     template="$1/${entry%%:*}"
     destination="$2/${entry#*:}"
-    mkdir -p "$(dirname "${destination}")" || return 1
+    mkdir -p "${destination%/*}" || return 1
     if [[ "${template}" == *.in ]]; then
       # The name holds only letters, digits, ".", "_" and "-", so it is
       # safe in the replacement.
@@ -140,8 +140,10 @@ main() {
     err "${project_dir} already exists. Choose another name."
     exit 1
   fi
-  if [[ -z "$(git config user.name)" || -z "$(git config user.email)" ]]
-  then
+  # Read from the projects folder, where the commit happens, not from
+  # wherever the command was started.
+  if [[ -z "$(git -C "${projects_dir}" config user.name)" \
+    || -z "$(git -C "${projects_dir}" config user.email)" ]]; then
     err "git has no identity yet: git config --global user.name" \
       "\"Your Name\"; git config --global user.email you@example.com"
     exit 1
@@ -150,8 +152,15 @@ main() {
   # Built in a hidden folder, so a failure leaves no half-made project
   # in the project list.
   work_dir="${projects_dir}/.${name}.new"
-  rm -rf "${work_dir}"
+  if ! rm -rf "${work_dir}"; then
+    err "${work_dir} is left from an earlier run and could not be" \
+      "removed. Remove it, then try again."
+    exit 1
+  fi
+  # The second check stops mv from moving the work folder into a
+  # project folder that appeared while it was built.
   if ! create_repo "${work_dir}" "${name}" "${code_dir}/templates/project" \
+    || [[ -e "${project_dir}" ]] \
     || ! mv "${work_dir}" "${project_dir}"; then
     rm -rf "${work_dir}"
     err "Project ${name} was not created. Check the message above, then" \

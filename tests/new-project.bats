@@ -57,13 +57,16 @@ setup() {
   assert_contains "$(cat "${projects}/demo/AGENTS.md")" "# demo project"
   assert_contains "$(cat "${projects}/demo/AGENTS.md")" \
     "backlog task list --json | jq -r -f .config/next-task.jq"
-  run grep --fixed-strings "decision-" "${projects}/demo/backlog/config.yml"
+  run grep --fixed-strings "decision-" \
+    "${projects}/demo/backlog/config.yml"
   assert_equal "${status}" 1
   run yq -o=json -I=0 '[.project_name, .default_status, .statuses,
     .projects, .auto_commit, .remote_operations, .bypass_git_hooks,
     .task_prefix, (.definition_of_done | length)]' \
     "${projects}/demo/backlog/config.yml"
-  assert_equal "${output}" '["demo","To Do",["To Do","In Progress","Done"],["_project"],false,false,false,"task",11]'
+  assert_equal "${output}" "$(printf '%s' '["demo","To Do",' \
+    '["To Do","In Progress","Done"],["_project"],false,false,false,' \
+    '"task",11]')"
 }
 
 @test "new-project ignores clones but keeps repositories/.gitkeep" {
@@ -81,7 +84,8 @@ setup() {
     "git -C ${projects}/demo remote add origin URL"
   assert_contains "${output}" \
     "git -C ${projects}/demo push -u origin main"
-  assert_contains "${output}" "[+] Start a session with: daeshift --project demo"
+  assert_contains "${output}" \
+    "[+] Start a session with: daeshift --project demo"
 }
 
 @test "new-project refuses a machine where daeshift is not set up" {
@@ -115,16 +119,22 @@ setup() {
   assert_equal "$(ls -A "${projects}")" ""
 }
 
+@test "new-project replaces a work folder left from an earlier run" {
+  mkdir "${projects}/.demo.new"
+  touch "${projects}/.demo.new/stale"
+  run "${daeshift}" --new-project demo
+  assert_equal "${status}" 0
+  assert_equal "$(ls -A "${projects}")" "demo"
+  run test -e "${projects}/demo/stale"
+  assert_equal "${status}" 1
+}
+
 @test "new-project uses every template" {
-  local file
-  local templates=0
+  local templates
 
   "${daeshift}" --new-project demo
-  for file in "${BATS_TEST_DIRNAME}"/../templates/project/*; do
-    if [[ "${file##*/}" != "README.md" ]]; then
-      templates=$((templates + 1))
-    fi
-  done
+  templates="$(find "${BATS_TEST_DIRNAME}/../templates/project" -type f \
+    ! -name README.md | wc -l | tr -d ' ')"
   # Every template, and repositories/.gitkeep.
   assert_equal "$(git -C "${projects}/demo" ls-files | wc -l | tr -d ' ')" \
     "$((templates + 1))"

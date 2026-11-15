@@ -1,0 +1,30 @@
+# pre-commit hooks for the @NAME@ project repo itself, run by
+# daeshift's git hook dispatcher. daeshift's own checks are named by
+# command; the dispatcher puts them on PATH.
+repos:
+  - repo: local
+    hooks:
+      - id: check-pre-commit-config
+        name: pre-commit configs
+        entry: daeshift-check-pre-commit-config
+        language: unsupported
+        files: '^\.config/pre-commit/.*\.yaml$'
+        stages: [pre-commit]
+      - id: parent-status
+        name: parent tasks follow their subtasks
+        entry: daeshift-parent-status
+        language: unsupported
+        stages: [pre-commit]
+        pass_filenames: false
+        always_run: true
+      - id: commit-prefix
+        name: the subject names its task
+        entry: daeshift-commit-prefix
+        language: unsupported
+        args: [--allow-board, --on-board]
+        stages: [commit-msg]
+      - id: no-ai-attribution
+        name: no AI attribution
+        entry: daeshift-no-ai-attribution
+        language: unsupported
+        stages: [commit-msg]

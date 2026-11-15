@@ -58,20 +58,24 @@ jobs:
           echo ~/.daeshift/bin >> "${GITHUB_PATH}"
           echo "${tools}/bin" >> "${GITHUB_PATH}"
           echo "${tools}/node/node_modules/.bin" >> "${GITHUB_PATH}"
-      - name: Add the demo project and turn on its services
+      - name: Add the demo project
         # Clones the public demo project and its two code repos at their
         # newest commits, so the job needs GitHub and those repos public.
         run: |
           daeshift --add-project \
             https://github.com/daemorgue/daeshift-demo-project.git \
             --name daeshift-demo-project
+      - name: Check the fresh box with no web interface
+        run: ~/.daeshift/ci/check-fresh-box
+      - name: Turn on the demo's board and maps
+        run: |
           yq -i '.projects["daeshift-demo-project"] = {"board": 4800,
             "repos": {"daeshift-demo-repo-01": 4801,
                       "daeshift-demo-repo-02": 4802}}' \
             ~/.daeshift/local/config.yaml
           echo y | daeshift --install
-      - name: Check the fresh box
-        run: ~/.daeshift/ci/check-fresh-box
+      - name: Check the board and maps answer
+        run: ~/.daeshift/ci/check-fresh-box --services
       - name: Show the services after a failure
         if: failure()
         run: |

@@ -72,7 +72,8 @@ session in every project. So the root never holds `AGENTS.md`,
    [`requirements/prerequisites`](./requirements/prerequisites) with
    your system's package manager, so they're on PATH in your own
    shell. A copy bundled with another tool, such as pi's own node,
-   doesn't count: git's hooks and the board run outside pi. daeshift
+   doesn't count: daeshift's git hooks and the backlog and groma
+   commands also run outside pi. daeshift
    checks them, but never installs them.
 
 2. Clone daeshift to `~/.daeshift`, then run its installer:

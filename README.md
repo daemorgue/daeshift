@@ -70,8 +70,11 @@ session in every project. So the root never holds `AGENTS.md`,
 
 1. Install the programs listed in
    [`requirements/prerequisites`](./requirements/prerequisites) with
-   your system's package manager. daeshift checks them, but never
-   installs them.
+   your system's package manager, so they're on `PATH` in your own
+   shell. A copy bundled with another tool doesn't count, such as pi's
+   own `node`. daeshift's git hooks and the `backlog` and `groma`
+   commands also run outside pi. daeshift checks these programs, but
+   never installs them.
 
 2. Clone daeshift to `~/.daeshift`, then run its installer:
 
@@ -123,6 +126,14 @@ as the remote and push, as the command prints:
 ```
 $ git -C ~/.daeshift/local/projects/demo remote add origin git@github.com:you/demo.git
 $ git -C ~/.daeshift/local/projects/demo push -u origin main
+```
+
+Then, beyond what the command prints, record the remote's default
+branch. Without it, `--pull` fails on the project with "has no default
+branch for origin":
+
+```
+$ git -C ~/.daeshift/local/projects/demo remote set-head origin --auto
 ```
 
 To add code repos, list each in its `.config/repos.yaml` and in

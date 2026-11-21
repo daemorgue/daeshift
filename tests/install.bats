@@ -11,6 +11,9 @@
 # "site", the yq on PATH (mikefarah's) as the pinned yq, and stand-ins:
 # node, loginctl (Linger from ~/linger), uname (Linux) and systemctl
 # (calls kept in ~/systemctl-calls; is-enabled fails if ~/disabled).
+# use_launchd turns the stand-in machine into a Mac: uname (Darwin) and
+# launchctl (calls kept in ~/launchctl-calls; print fails if
+# ~/not-loaded).
 
 # Fails the test when the text does not contain the expected part.
 assert_contains() {
@@ -63,6 +66,18 @@ set_up_services() {
     "${HOME}/bin/uname" "${HOME}/bin/node"
   printf '%s\n' "runner: pi" "projects:" "$@" \
     > "${DAESHIFT_HOME}/local/config.yaml"
+}
+
+# Makes the stand-in machine look like macOS, after set_up_services.
+use_launchd() {
+  printf '%s\n' '#!/usr/bin/env bash' 'echo Darwin' > "${HOME}/bin/uname"
+  # The stand-in's own lines must reach its file unexpanded.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/usr/bin/env bash' \
+    'echo "$*" >> "${HOME}/launchctl-calls"' \
+    '[[ "$1" != "print" || ! -f "${HOME}/not-loaded" ]]' \
+    > "${HOME}/bin/launchctl"
+  chmod +x "${HOME}/bin/launchctl"
 }
 
 setup() {
@@ -324,13 +339,81 @@ setup() {
     "--user restart backlog-demo.service"
 }
 
-@test "install sets up no service on a machine without systemd" {
+@test "install sets up no service on a machine without systemd or launchd" {
   set_up_services "  demo:" "    board: 4748"
-  printf '%s\n' '#!/usr/bin/env bash' 'echo Darwin' > "${HOME}/bin/uname"
+  printf '%s\n' '#!/usr/bin/env bash' 'echo FreeBSD' > "${HOME}/bin/uname"
   run "${daeshift}" --install </dev/null
   assert_equal "${status}" 0
-  assert_contains "${output}" "they need systemd, which this machine lacks"
+  assert_contains "${output}" \
+    "they need systemd or launchd, which this machine lacks"
   assert_equal "$(ls "${HOME}/.config/systemd/user" 2>/dev/null)" ""
+}
+
+@test "install sets up a configured board and map service on macOS" {
+  local agent
+  local agents="${HOME}/Library/LaunchAgents"
+  local local_dir="${DAESHIFT_HOME}/local"
+
+  set_up_services "  demo:" "    board: 4748" "    repos:" \
+    "      site: 4747"
+  use_launchd
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" \
+    "set up service daeshift.backlog-demo.plist on port"
+  agent="$(cat "${agents}/daeshift.backlog-demo.plist")"
+  assert_contains "${agent}" "<string>daeshift.backlog-demo</string>"
+  assert_contains "${agent}" \
+    "<string>${local_dir}/projects/demo</string>"
+  assert_contains "${agent}" "/node_modules/.bin/backlog</string>"
+  assert_contains "${agent}" "<string>4748</string>"
+  agent="$(cat "${agents}/daeshift.groma-demo-site.plist")"
+  assert_contains "${agent}" "<string>daeshift.groma-demo-site</string>"
+  assert_contains "${agent}" \
+    "<string>${local_dir}/projects/demo/repositories/site</string>"
+  assert_contains "${agent}" "/node_modules/.bin/groma</string>"
+  assert_contains "$(cat "${HOME}/launchctl-calls")" "bootstrap gui/$(id -u)\
+ ${agents}/daeshift.backlog-demo.plist"
+}
+
+@test "install leaves configured launchd services alone on a second run" {
+  set_up_services "  demo:" "    board: 4748"
+  use_launchd
+  "${daeshift}" --install <<<"y"
+  rm "${HOME}/launchctl-calls"
+  run "${daeshift}" --install </dev/null
+  assert_equal "${status}" 0
+  assert_contains "${output}" "Nothing to change."
+  assert_equal "$(cat "${HOME}/launchctl-calls")" \
+    "print gui/$(id -u)/daeshift.backlog-demo"
+}
+
+@test "install removes a launchd service no longer configured" {
+  set_up_services "  demo:" "    board: 4748" "    repos:" \
+    "      site: 4747"
+  use_launchd
+  "${daeshift}" --install <<<"y"
+  echo "<plist/>" > "${HOME}/Library/LaunchAgents/other.plist"
+  printf '%s\n' "runner: pi" "projects:" "  demo:" "    board: 4748" \
+    > "${DAESHIFT_HOME}/local/config.yaml"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" \
+    "remove service daeshift.groma-demo-site.plist"
+  assert_contains "$(cat "${HOME}/launchctl-calls")" \
+    "bootout gui/$(id -u)/daeshift.groma-demo-site"
+  assert_equal "$(ls "${HOME}/Library/LaunchAgents")" \
+    "$(printf 'daeshift.backlog-demo.plist\nother.plist')"
+}
+
+@test "install starts a configured launchd service that is not loaded" {
+  set_up_services "  demo:" "    board: 4748"
+  use_launchd
+  "${daeshift}" --install <<<"y"
+  touch "${HOME}/not-loaded"
+  run "${daeshift}" --install <<<"y"
+  assert_equal "${status}" 0
+  assert_contains "${output}" "start service daeshift.backlog-demo.plist"
 }
 
 @test "install starts a configured service that is not enabled" {

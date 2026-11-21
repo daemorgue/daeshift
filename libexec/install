@@ -28,7 +28,9 @@ readonly SERVICES_QUERY='(.projects // {}) | to_entries | .[] | .key as $p
       | "board\t" + $p + "\t-\t" + (.value.board | tostring)),
     ((.value.repos // {}) | to_entries | .[]
       | "map\t" + $p + "\t" + .key + "\t" + (.value | tostring)))'
-readonly PLIST_MARKER="<!-- Written by daeshift --install"
+# "--" is not allowed inside an XML comment, so the plist marker says
+# "daeshift install".
+readonly PLIST_MARKER="<!-- Written by daeshift install"
 readonly UNIT_MARKER="# Written by daeshift --install"
 readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
@@ -72,16 +74,16 @@ warn() { echo "[-] $*"; }
 # removes the stale units, writes the others, enables and restarts them
 # (systemd) or boots them out and bootstraps them again (launchd).
 apply_services() {
-  local domain
+  local domain=""
   local index=0
 
-  domain="gui/$(id -u)" || return 1
+  if [[ "${service_platform}" == "launchd" ]]; then
+    domain="gui/$(id -u)" || return 1
+  fi
   mkdir -p "$1" || return 1
   while [[ ${index} -lt ${#stale_units[@]} ]]; do
     if [[ "${service_platform}" == "launchd" ]]; then
-      # bootout fails when the agent is not loaded, which is fine.
-      launchctl bootout "${domain}/${stale_units[index]%.plist}" \
-        2>/dev/null
+      remove_agent "${domain}" "${stale_units[index]%.plist}" || return 1
     else
       systemctl --user --quiet disable --now "${stale_units[index]}" \
         || return 1
@@ -102,9 +104,7 @@ apply_services() {
   index=0
   while [[ ${index} -lt ${#unit_names[@]} ]]; do
     if [[ "${service_platform}" == "launchd" ]]; then
-      # bootout fails when the agent is not loaded, which is fine.
-      launchctl bootout "${domain}/${unit_names[index]%.plist}" \
-        2>/dev/null
+      remove_agent "${domain}" "${unit_names[index]%.plist}" || return 1
       launchctl bootstrap "${domain}" "$1/${unit_names[index]}" \
         || return 1
     else
@@ -517,7 +517,7 @@ pick_release() {
 # Plans the board and map services that config.yaml in local folder $2
 # asks for, from the templates in code folder $1, against the units in
 # folder $3. Fills service_changes, stale_units, unit_names and
-# unit_texts. Warns when the machine has no systemd or linger is off.
+# unit_texts. Warns when the machine has neither systemd nor launchd.
 # Fails, saying why, for a config it cannot read or a service it cannot
 # set up.
 plan_services() {
@@ -674,6 +674,11 @@ render_unit() {
     folder="${folder//%/%%}"
     local_dir="${local_dir//%/%%}"
     node="${node//%/%%}"
+  else
+    # A plist is XML, so & and < in a path must be escaped.
+    folder="$(xml_escape "${folder}")"
+    local_dir="$(xml_escape "${local_dir}")"
+    node="$(xml_escape "${node}")"
   fi
   tools="${local_dir}/tools/node/node_modules/.bin"
   path="${tools}:${local_dir}/tools/bin:${node%/*}:/usr/local/bin:/usr/bin"
@@ -685,6 +690,17 @@ render_unit() {
   text="${text//@PATH@/${path}}"
   text="${text//@PORT@/$4}"
   echo "${text//@TOOLS@/${tools}}"
+}
+
+# Boots the agent named $2 out of launchd domain $1. Not loaded is
+# fine; fails when the agent stays loaded after the bootout.
+remove_agent() {
+  if ! launchctl bootout "$1/$2" 2>/dev/null \
+    && launchctl print "$1/$2" >/dev/null 2>&1; then
+    err "launchctl could not unload $2. Unload it yourself with:" \
+      "launchctl bootout $1/$2"
+    return 1
+  fi
 }
 
 # Answers whether the service $1 starts at login: enabled for systemd,
@@ -758,6 +774,14 @@ version_at_least() {
     fi
     index=$((index + 1))
   done
+}
+
+# Prints $1 with &, < and > escaped for XML.
+xml_escape() {
+  local text="${1//&/&amp;}"
+
+  text="${text//</&lt;}"
+  echo "${text//>/&gt;}"
 }
 
 main "$@"

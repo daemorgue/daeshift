@@ -1,4 +1,4 @@
-<!-- Written by daeshift --install from services/launchd/groma.plist.
+<!-- Written by daeshift install from services/launchd/groma.plist.
      Change config.yaml instead: install rewrites or removes this file.
      The groma map of the @NAME@ repo (port @PORT@, every interface). -->
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
@@ -24,6 +24,11 @@
   <key>RunAtLoad</key>
   <true/>
   <key>KeepAlive</key>
-  <true/>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
 </dict>
 </plist>

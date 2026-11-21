@@ -352,7 +352,10 @@ setup() {
 @test "install sets up a configured board and map service on macOS" {
   local agent
   local agents="${HOME}/Library/LaunchAgents"
+  local bootstrap
   local local_dir="${DAESHIFT_HOME}/local"
+
+  bootstrap="bootstrap gui/$(id -u) ${agents}/daeshift.backlog-demo.plist"
 
   set_up_services "  demo:" "    board: 4748" "    repos:" \
     "      site: 4747"
@@ -372,8 +375,7 @@ setup() {
   assert_contains "${agent}" \
     "<string>${local_dir}/projects/demo/repositories/site</string>"
   assert_contains "${agent}" "/node_modules/.bin/groma</string>"
-  assert_contains "$(cat "${HOME}/launchctl-calls")" "bootstrap gui/$(id -u)\
- ${agents}/daeshift.backlog-demo.plist"
+  assert_contains "$(cat "${HOME}/launchctl-calls")" "${bootstrap}"
 }
 
 @test "install leaves configured launchd services alone on a second run" {
@@ -411,9 +413,12 @@ setup() {
   use_launchd
   "${daeshift}" --install <<<"y"
   touch "${HOME}/not-loaded"
+  rm "${HOME}/launchctl-calls"
   run "${daeshift}" --install <<<"y"
   assert_equal "${status}" 0
   assert_contains "${output}" "start service daeshift.backlog-demo.plist"
+  assert_contains "$(cat "${HOME}/launchctl-calls")" \
+    "bootstrap gui/$(id -u)"
 }
 
 @test "install starts a configured service that is not enabled" {

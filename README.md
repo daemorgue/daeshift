@@ -44,7 +44,9 @@ runners/
   pi/             the parts only pi understands
     extensions/   code that adds commands and checks to pi
     agents/       roles, read by the subagent extension
-services/systemd/ templates for the board and map services
+services/        templates for the board and map services
+  systemd/        as systemd user units, for Linux
+  launchd/        as user LaunchAgents, for macOS
 templates/project/
                   the files a new project starts from
 ci/check-root     the check that keeps the root free of instruction files
@@ -157,9 +159,10 @@ daeshift's git hooks then don't run, because they only look in
 
 ## How to serve the board and maps
 
-On Linux, daeshift can run each project's board and each code repo's
-map as a systemd user service, so you can open them in a browser.
-Give each one a port of its own in `~/.daeshift/local/config.yaml`:
+daeshift can run each project's board and each code repo's map as a
+service, so you can open them in a browser: a systemd user service on
+Linux, a user LaunchAgent on macOS. Give each one a port of its own in
+`~/.daeshift/local/config.yaml`:
 
 ```yaml
 runner: pi
@@ -171,9 +174,10 @@ projects:
 ```
 
 Then run `daeshift --install`. It checks each project and repo, lists
-the services to set up, update or remove, and asks first. To keep them
-running after you log out, run the `sudo loginctl enable-linger`
-command it prints; daeshift never runs sudo itself.
+the services to set up, update or remove, and asks first. On Linux, to
+keep them running after you log out, run the `sudo loginctl
+enable-linger` command it prints; daeshift never runs sudo itself. On
+macOS, the services start when you log in and stop when you log out.
 
 ## How to update
 

@@ -28,6 +28,9 @@ readonly SERVICES_QUERY='(.projects // {}) | to_entries | .[] | .key as $p
       | "board\t" + $p + "\t-\t" + (.value.board | tostring)),
     ((.value.repos // {}) | to_entries | .[]
       | "map\t" + $p + "\t" + .key + "\t" + (.value | tostring)))'
+# "--" is not allowed inside an XML comment, so the plist marker says
+# "daeshift install".
+readonly PLIST_MARKER="<!-- Written by daeshift install"
 readonly UNIT_MARKER="# Written by daeshift --install"
 readonly VERSION_PATTERN='[0-9]+(\.[0-9]+)+'
 
@@ -41,6 +44,9 @@ quiet="false"
 # asks for any service, the units to write with their text, and the
 # units daeshift wrote that config.yaml no longer asks for.
 service_changes=()
+# "systemd", "launchd" or "": how this machine runs the services,
+# set once in main.
+service_platform=""
 services_configured="false"
 stale_units=()
 unit_names=()
@@ -65,14 +71,23 @@ warn() { echo "[-] $*"; }
 ### Helpers end
 
 # Makes the service changes plan_services planned, in units folder $1:
-# removes the stale units, writes the others, enables and restarts them.
+# removes the stale units, writes the others, enables and restarts them
+# (systemd) or boots them out and bootstraps them again (launchd).
 apply_services() {
+  local domain=""
   local index=0
 
+  if [[ "${service_platform}" == "launchd" ]]; then
+    domain="gui/$(id -u)" || return 1
+  fi
   mkdir -p "$1" || return 1
   while [[ ${index} -lt ${#stale_units[@]} ]]; do
-    systemctl --user --quiet disable --now "${stale_units[index]}" \
-      || return 1
+    if [[ "${service_platform}" == "launchd" ]]; then
+      remove_agent "${domain}" "${stale_units[index]%.plist}" || return 1
+    else
+      systemctl --user --quiet disable --now "${stale_units[index]}" \
+        || return 1
+    fi
     rm -f "$1/${stale_units[index]}" || return 1
     good "Removed service ${stale_units[index]}"
     index=$((index + 1))
@@ -83,11 +98,19 @@ apply_services() {
       || return 1
     index=$((index + 1))
   done
-  systemctl --user daemon-reload || return 1
+  if [[ "${service_platform}" == "systemd" ]]; then
+    systemctl --user daemon-reload || return 1
+  fi
   index=0
   while [[ ${index} -lt ${#unit_names[@]} ]]; do
-    systemctl --user --quiet enable "${unit_names[index]}" || return 1
-    systemctl --user restart "${unit_names[index]}" || return 1
+    if [[ "${service_platform}" == "launchd" ]]; then
+      remove_agent "${domain}" "${unit_names[index]%.plist}" || return 1
+      launchctl bootstrap "${domain}" "$1/${unit_names[index]}" \
+        || return 1
+    else
+      systemctl --user --quiet enable "${unit_names[index]}" || return 1
+      systemctl --user restart "${unit_names[index]}" || return 1
+    fi
     good "Started service ${unit_names[index]}"
     index=$((index + 1))
   done
@@ -297,6 +320,19 @@ main() {
   # every path as written. bash 3.2 lacks the option.
   shopt -u patsub_replacement 2>/dev/null
   check_dependencies || exit 1
+  case "$(uname -s)" in
+    "Linux")
+      if command -v systemctl >/dev/null 2>&1; then
+        service_platform="systemd"
+      fi
+      ;;
+    "Darwin")
+      if command -v launchctl >/dev/null 2>&1; then
+        service_platform="launchd"
+        units_dir="${HOME}/Library/LaunchAgents"
+      fi
+      ;;
+  esac
   script_dir="$(dirname "$0")" || exit 1
   code_dir="$(cd "${script_dir}/.." && pwd)" || exit 1
   local_dir="${daeshift_home}/local"
@@ -481,7 +517,7 @@ pick_release() {
 # Plans the board and map services that config.yaml in local folder $2
 # asks for, from the templates in code folder $1, against the units in
 # folder $3. Fills service_changes, stale_units, unit_names and
-# unit_texts. Warns when the machine has no systemd or linger is off.
+# unit_texts. Warns when the machine has neither systemd nor launchd.
 # Fails, saying why, for a config it cannot read or a service it cannot
 # set up.
 plan_services() {
@@ -490,10 +526,13 @@ plan_services() {
   local failed="false"
   local first_line
   local kind
+  local marker="${UNIT_MARKER}"
   local name
   local port
+  local prefix=""
   local project
   local repo
+  local suffix="service"
   local text
   local unit
   local used_ports=" "
@@ -507,13 +546,17 @@ plan_services() {
     err "${config} could not be read. Fix it, then try again."
     return 1
   fi
-  if [[ "$(uname -s)" != "Linux" ]] \
-    || ! command -v systemctl >/dev/null 2>&1; then
+  if [[ -z "${service_platform}" ]]; then
     if [[ -n "${entries}" ]]; then
-      warn "${config} sets services, but they need systemd, which this" \
-        "machine lacks; none is set up."
+      warn "${config} sets services, but they need systemd or launchd," \
+        "which this machine lacks; none is set up."
     fi
     return 0
+  fi
+  if [[ "${service_platform}" == "launchd" ]]; then
+    marker="${PLIST_MARKER}"
+    prefix="daeshift."
+    suffix="plist"
   fi
   while IFS=$'\t' read -r kind project repo port; do
     if [[ -z "${kind}" ]]; then
@@ -526,14 +569,17 @@ plan_services() {
     fi
     used_ports+="${port} "
     if [[ "${kind}" == "board" ]]; then
-      name="backlog-${project}.service"
-      text="$(render_unit "$1/services/systemd/backlog.service" \
-        "${project}" "$2/projects/${project}" "${port}" "$2")" || return 1
+      name="${prefix}backlog-${project}.${suffix}"
+      text="$(render_unit \
+        "$1/services/${service_platform}/backlog.${suffix}" \
+        "${project}" "$2/projects/${project}" "${port}" "$2" \
+        "${name%.*}")" || return 1
     else
-      name="groma-${project}-${repo}.service"
-      text="$(render_unit "$1/services/systemd/groma.service" "${repo}" \
-        "$2/projects/${project}/repositories/${repo}" "${port}" "$2")" \
-        || return 1
+      name="${prefix}groma-${project}-${repo}.${suffix}"
+      text="$(render_unit \
+        "$1/services/${service_platform}/groma.${suffix}" "${repo}" \
+        "$2/projects/${project}/repositories/${repo}" "${port}" "$2" \
+        "${name%.*}")" || return 1
     fi
     if [[ "${wanted}" == *" ${name} "* ]]; then
       err "${config}: two services would share the unit ${name}. Rename" \
@@ -545,7 +591,7 @@ plan_services() {
     unit="$3/${name}"
     if [[ -f "${unit}" ]]; then
       IFS= read -r first_line < "${unit}"
-      if [[ "${first_line}" != "${UNIT_MARKER}"* ]]; then
+      if [[ "${first_line}" != "${marker}"* ]]; then
         err "${unit} was not written by daeshift. Move it away, then try" \
           "again."
         failed="true"
@@ -553,7 +599,7 @@ plan_services() {
       fi
       if [[ "$(cat "${unit}")" != "${text}" ]]; then
         service_changes+=("update service ${name}")
-      elif ! systemctl --user --quiet is-enabled "${name}"; then
+      elif ! service_is_enabled "${name}"; then
         service_changes+=("start service ${name}")
       else
         continue
@@ -568,13 +614,13 @@ plan_services() {
     return 1
   fi
 
-  for unit in "$3"/*.service; do
+  for unit in "$3"/*."${suffix}"; do
     name="${unit##*/}"
     if [[ ! -f "${unit}" || "${wanted}" == *" ${name} "* ]]; then
       continue
     fi
     IFS= read -r first_line < "${unit}"
-    if [[ "${first_line}" == "${UNIT_MARKER}"* ]]; then
+    if [[ "${first_line}" == "${marker}"* ]]; then
       service_changes+=("remove service ${name}")
       stale_units+=("${name}")
     fi
@@ -598,6 +644,7 @@ print_next_steps() {
       ;;
   esac
   if [[ "${services_configured}" == "true" \
+    && "${service_platform}" == "systemd" \
     && "$(loginctl show-user "$(id -un)" --property=Linger --value)" \
       != "yes" ]]; then
     warn "Services stop when you log out and do not start at boot. Keep" \
@@ -610,28 +657,60 @@ print_next_steps() {
   fi
 }
 
-# Prints unit template $1 filled in for name $2, working folder $3 and
-# port $4, with the pinned tools of local folder $5 and node on PATH.
-# A % in a path is doubled, as systemd reads %x as a specifier.
+# Prints unit template $1 filled in for name $2, working folder $3,
+# port $4 and label $6, with the pinned tools of local folder $5 and
+# node on PATH. For systemd, a % in a path is doubled, as systemd reads
+# %x as a specifier.
 render_unit() {
-  local folder="${3//%/%%}"
-  local local_dir="${5//%/%%}"
+  local folder="$3"
+  local local_dir="$5"
   local node
   local path
   local text
   local tools
 
   node="$(command -v node)" || return 1
-  node="${node//%/%%}"
+  if [[ "${service_platform}" == "systemd" ]]; then
+    folder="${folder//%/%%}"
+    local_dir="${local_dir//%/%%}"
+    node="${node//%/%%}"
+  else
+    # A plist is XML, so & and < in a path must be escaped.
+    folder="$(xml_escape "${folder}")"
+    local_dir="$(xml_escape "${local_dir}")"
+    node="$(xml_escape "${node}")"
+  fi
   tools="${local_dir}/tools/node/node_modules/.bin"
   path="${tools}:${local_dir}/tools/bin:${node%/*}:/usr/local/bin:/usr/bin"
   path+=":/bin"
   text="$(cat "$1")" || return 1
   text="${text//@FOLDER@/${folder}}"
+  text="${text//@LABEL@/$6}"
   text="${text//@NAME@/$2}"
   text="${text//@PATH@/${path}}"
   text="${text//@PORT@/$4}"
   echo "${text//@TOOLS@/${tools}}"
+}
+
+# Boots the agent named $2 out of launchd domain $1. Not loaded is
+# fine; fails when the agent stays loaded after the bootout.
+remove_agent() {
+  if ! launchctl bootout "$1/$2" 2>/dev/null \
+    && launchctl print "$1/$2" >/dev/null 2>&1; then
+    err "launchctl could not unload $2. Unload it yourself with:" \
+      "launchctl bootout $1/$2"
+    return 1
+  fi
+}
+
+# Answers whether the service $1 starts at login: enabled for systemd,
+# loaded in the user's gui domain for launchd.
+service_is_enabled() {
+  if [[ "${service_platform}" == "launchd" ]]; then
+    launchctl print "gui/$(id -u)/${1%.plist}" >/dev/null 2>&1
+  else
+    systemctl --user --quiet is-enabled "$1"
+  fi
 }
 
 # Answers whether stamp file $2 matches the pinned tool lists of code
@@ -695,6 +774,14 @@ version_at_least() {
     fi
     index=$((index + 1))
   done
+}
+
+# Prints $1 with &, < and > escaped for XML.
+xml_escape() {
+  local text="${1//&/&amp;}"
+
+  text="${text//</&lt;}"
+  echo "${text//>/&gt;}"
 }
 
 main "$@"

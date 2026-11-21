@@ -1,0 +1,35 @@
+<!-- Written by daeshift install from services/launchd/backlog.plist.
+     Change config.yaml instead: install rewrites or removes this file.
+     The board of the @NAME@ project (127.0.0.1:@PORT@). -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>@TOOLS@/backlog</string>
+    <string>browser</string>
+    <string>--no-open</string>
+    <string>--port</string>
+    <string>@PORT@</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>@FOLDER@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PATH@</string>
+  </dict>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>5</integer>
+</dict>
+</plist>
